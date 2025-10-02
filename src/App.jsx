@@ -278,7 +278,11 @@ function Report() {
 
         {step===2 && (
           <div className="space-y-4">
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-12 gap-4">
+  <div className="md:col-span-4">…</div>
+  <div className="md:col-span-4">…</div>
+  <div className="md:col-span-4">…</div>
+</div>
               <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
                 <input className="w-full rounded-lg border p-2" placeholder="Ex.: 15/09/2025 ou Ago-Out/2025" value={quando} onChange={(e)=>setQuando(e.target.value)} />
               </Field>
@@ -403,23 +407,19 @@ function Report() {
               </label>
             </Field>
             {!anonimo && (
-              <div className="grid md:grid-cols-3 gap-4">
-                <Field label="Nome">
-                  <input className="w-full rounded-lg border p-2" value={contato.nome} onChange={(e)=>setContato({...contato, nome:e.target.value})} />
-                </Field>
-                <Field label="Email">
-                  <input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={(e)=>setContato({...contato, email:e.target.value})} />
-                </Field>
-                <Field label="Telefone">
-                  <input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={(e)=>setContato({...contato, telefone:e.target.value})} />
-                </Field>
-                <Field label="Preferência de contato">
-                  <select className="w-full rounded-lg border p-2" value={prefer} onChange={(e)=>setPrefer(e.target.value)}>
-                    <option value="email">Email</option>
-                    <option value="telefone">Telefone</option>
-                  </select>
-                </Field>
-              </div>
+              <div className="grid md:grid-cols-12 gap-4">
+  <Field label="Nome"><input className="w-full rounded-lg border p-2" value={contato.nome} onChange={(e)=>setContato({...contato, nome:e.target.value})} /></Field>
+  <Field label="Email"><input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={(e)=>setContato({...contato, email:e.target.value})} /></Field>
+  <Field label="Telefone"><input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={(e)=>setContato({...contato, telefone:e.target.value})} /></Field>
+  <div className="md:col-span-4">
+    <Field label="Preferência de contato">
+      <select className="w-full rounded-lg border p-2" value={prefer} onChange={(e)=>setPrefer(e.target.value)}>
+        <option value="email">Email</option>
+        <option value="telefone">Telefone</option>
+      </select>
+    </Field>
+  </div>
+</div>
             )}
             <div className="flex items-center justify-between">
               <button onClick={()=>setStep(4)} className="px-3 py-2 rounded-lg border">Voltar</button>

@@ -175,18 +175,41 @@ const Stat = ({ label, value }) => (
 );
 
 function Report() {
+  const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+
+  // Perguntas detalhadas
+  const [quando, setQuando] = useState("");
+  const [periodicidade, setPeriodicidade] = useState("único");
+  const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
+
+  const [envolvidos, setEnvolvidos] = useState([{ nome: "", cargo: "", relacao: "" }]);
+  const [testemunhas, setTestemunhas] = useState([{ nome: "", contato: "" }]);
+
+  const [valorFinanceiro, setValorFinanceiro] = useState("");
+  const [foiReportado, setFoiReportado] = useState("nao");
+  const [paraQuem, setParaQuem] = useState("");
+
+  const [files, setFiles] = useState([]);
+
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
-  const [files, setFiles] = useState([]);
 
-  const canSend = descricao.trim().length >= 30;
+  const canNext1 = !!unidade && !!categoria;
+  const canNext2 = descricao.trim().length >= 100 && !!onde && !!quando;
+  const canSubmit = canNext1 && canNext2;
+
+  const addRow = (listSetter, emptyObj) => listSetter(prev => [...prev, { ...emptyObj }]);
+  const delRow = (listSetter, idx) => listSetter(prev => prev.filter((_, i)=> i!==idx));
 
   const onSubmit = () => {
-    if (!canSend) return alert("Por favor, descreva o ocorrido com ao menos 30 caracteres.");
+    if (!canSubmit) {
+      alert("Preencha as perguntas obrigatórias antes de enviar (descrição mínima de 100 caracteres).");
+      return;
+    }
     const casos = loadCasos();
     const protocolo = genProtocolo();
     const novo = {
@@ -194,6 +217,16 @@ function Report() {
       createdAt: new Date().toISOString(),
       unidade,
       categoria,
+      perguntas: {
+        quando,
+        periodicidade,
+        onde,
+        envolvidos: envolvidos.filter(e=>e.nome||e.cargo||e.relacao),
+        testemunhas: testemunhas.filter(t=>t.nome||t.contato),
+        valorFinanceiro,
+        foiReportado,
+        paraQuem: foiReportado==='sim'? paraQuem : "",
+      },
       descricao: descricao.trim(),
       anonimo,
       contato: anonimo ? null : { ...contato, prefer },
@@ -203,78 +236,184 @@ function Report() {
     };
     saveCasos([novo, ...casos]);
     window.location.hash = `#status?proto=${protocolo}`;
-    alert(`Denúncia registrada com sucesso. Seu protocolo é: ${protocolo}`);
+    alert(`Denúncia registrada. Protocolo: ${protocolo}`);
   };
+
+  const Stepper = () => (
+    <div className="flex items-center gap-2 text-xs">
+      {[1,2,3,4,5].map(n => (
+        <div key={n} className={`px-2 py-1 rounded-full border ${step===n?'bg-emerald-600 text-white border-emerald-700':'bg-white'}`}>Etapa {n}</div>
+      ))}
+    </div>
+  );
 
   return (
     <section id="report" className="space-y-6">
-      <SectionTitle icon={FileText} title="Registrar denúncia" subtitle="Preencha os campos abaixo. Você pode permanecer anônimo." />
+      <SectionTitle icon={FileText} title="Registrar denúncia" subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *." />
       <Card className="space-y-5">
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Unidade" required>
-            <select className="w-full rounded-lg border p-2" value={unidade} onChange={(e)=>setUnidade(e.target.value)}>
-              {UNIDADES.map(u => <option key={u}>{u}</option>)}
-            </select>
-          </Field>
-          <Field label="Categoria" required>
-            <select className="w-full rounded-lg border p-2" value={categoria} onChange={(e)=>setCategoria(e.target.value)}>
-              {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
-            </select>
-          </Field>
+        <div className="flex items-center justify-between">
+          <Stepper />
+          <div className="text-xs text-slate-500">Descrição mínima: 100 caracteres</div>
         </div>
 
-        <Field label="Descrição detalhada" required hint="Conte o que aconteceu, quando, onde, quem estava envolvido e quaisquer evidências.">
-          <textarea className="w-full rounded-lg border p-3 min-h-[160px]" value={descricao} onChange={(e)=>setDescricao(e.target.value)} placeholder="Descreva os fatos com detalhes…" />
-          <div className="text-xs text-slate-500 mt-1">{descricao.length} caracteres</div>
-        </Field>
-
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Anonimato">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={anonimo} onChange={(e)=>setAnonimo(e.target.checked)} />
-              <span className="text-sm">Quero permanecer anônimo</span>
-            </label>
-            <p className="text-xs text-slate-500 mt-2">Se desmarcar, seus dados de contato serão enviados para retorno.</p>
-          </Field>
-        </div>
-
-        {!anonimo && (
-          <div className="grid md:grid-cols-3 gap-4">
-            <Field label="Nome">
-              <input className="w-full rounded-lg border p-2" value={contato.nome} onChange={(e)=>setContato({...contato, nome:e.target.value})} />
-            </Field>
-            <Field label="Email">
-              <input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={(e)=>setContato({...contato, email:e.target.value})} />
-            </Field>
-            <Field label="Telefone">
-              <input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={(e)=>setContato({...contato, telefone:e.target.value})} />
-            </Field>
-            <Field label="Preferência de contato">
-              <select className="w-full rounded-lg border p-2" value={prefer} onChange={(e)=>setPrefer(e.target.value)}>
-                <option value="email">Email</option>
-                <option value="telefone">Telefone</option>
-              </select>
-            </Field>
+        {step===1 && (
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label="Unidade *">
+                <select className="w-full rounded-lg border p-2" value={unidade} onChange={(e)=>setUnidade(e.target.value)}>
+                  {UNIDADES.map(u => <option key={u}>{u}</option>)}
+                </select>
+              </Field>
+              <Field label="Categoria *">
+                <select className="w-full rounded-lg border p-2" value={categoria} onChange={(e)=>setCategoria(e.target.value)}>
+                  {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="flex items-center justify-end">
+              <button disabled={!canNext1} onClick={()=>setStep(2)} className={`px-4 py-2 rounded-lg text-white ${canNext1?'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>Próxima</button>
+            </div>
           </div>
         )}
 
-        <Field label="Anexos (opcional)" hint="Arquivos serão armazenados apenas neste dispositivo (protótipo).">
-          <FilePicker files={files} setFiles={setFiles} />
-        </Field>
+        {step===2 && (
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-3 gap-4">
+              <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
+                <input className="w-full rounded-lg border p-2" placeholder="Ex.: 15/09/2025 ou Ago-Out/2025" value={quando} onChange={(e)=>setQuando(e.target.value)} />
+              </Field>
+              <Field label="Recorrência">
+                <select className="w-full rounded-lg border p-2" value={periodicidade} onChange={(e)=>setPeriodicidade(e.target.value)}>
+                  <option value="único">Evento único</option>
+                  <option value="recorrente">Recorrente</option>
+                  <option value="contínuo">Contínuo</option>
+                </select>
+              </Field>
+              <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
+                <input className="w-full rounded-lg border p-2" placeholder="Ex.: Loja KIZ - estoque" value={onde} onChange={(e)=>setOnde(e.target.value)} />
+              </Field>
+            </div>
+            <Field label="Descreva detalhadamente o ocorrido *" hint="O que aconteceu? Quem estava envolvido? Há evidências?">
+              <textarea className="w-full rounded-lg border p-3 min-h-[180px]" value={descricao} onChange={(e)=>setDescricao(e.target.value)} placeholder="Conte os fatos com o máximo de detalhes possíveis…" />
+              <div className={`text-xs mt-1 ${descricao.length<100?'text-rose-600':'text-slate-500'}`}>{descricao.length} / 100</div>
+            </Field>
+            <div className="flex items-center justify-between">
+              <button onClick={()=>setStep(1)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button disabled={!canNext2} onClick={()=>setStep(3)} className={`px-4 py-2 rounded-lg text-white ${canNext2?'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>Próxima</button>
+            </div>
+          </div>
+        )}
 
-        <div className="flex items-center justify-end gap-3">
-          <a href="#home" className="text-sm text-slate-500 hover:underline">Cancelar</a>
-          <button onClick={onSubmit} disabled={!canSend} className={`px-4 py-2 rounded-lg text-white ${canSend? 'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>
-            Enviar denúncia
-          </button>
-        </div>
+        {step===3 && (
+          <div className="space-y-5">
+            <div>
+              <h4 className="font-medium mb-2">Quem esteve envolvido?</h4>
+              <div className="space-y-3">
+                {envolvidos.map((e, i)=>(
+                  <div key={i} className="grid md:grid-cols-3 gap-3">
+                    <input className="rounded-lg border p-2" placeholder="Nome (opcional)" value={e.nome} onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))} />
+                    <input className="rounded-lg border p-2" placeholder="Cargo/Setor (opcional)" value={e.cargo} onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, cargo: ev.target.value}:x))} />
+                    <input className="rounded-lg border p-2" placeholder="Relação com o fato (opcional)" value={e.relacao} onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, relacao: ev.target.value}:x))} />
+                    <div className="col-span-full flex gap-2">
+                      <button onClick={()=>addRow(setEnvolvidos, {nome:'', cargo:'', relacao:''})} className="text-xs px-2 py-1 rounded border">+ adicionar envolvido</button>
+                      {envolvidos.length>1 && <button onClick={()=>delRow(setEnvolvidos, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-medium mb-2">Testemunhas (se houver)</h4>
+              <div className="space-y-3">
+                {testemunhas.map((t, i)=>(
+                  <div key={i} className="grid md:grid-cols-2 gap-3">
+                    <input className="rounded-lg border p-2" placeholder="Nome (opcional)" value={t.nome} onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))} />
+                    <input className="rounded-lg border p-2" placeholder="Contato (opcional)" value={t.contato} onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, contato: ev.target.value}:x))} />
+                    <div className="col-span-full flex gap-2">
+                      <button onClick={()=>addRow(setTestemunhas, {nome:'', contato:''})} className="text-xs px-2 py-1 rounded border">+ adicionar testemunha</button>
+                      {testemunhas.length>1 && <button onClick={()=>delRow(setTestemunhas, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-4">
+              <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+                <input className="w-full rounded-lg border p-2" placeholder="Ex.: ~R$ 5.000" value={valorFinanceiro} onChange={(e)=>setValorFinanceiro(e.target.value)} />
+              </Field>
+              <Field label="Você já reportou isso internamente?">
+                <select className="w-full rounded-lg border p-2" value={foiReportado} onChange={(e)=>setFoiReportado(e.target.value)}>
+                  <option value="nao">Não</option>
+                  <option value="sim">Sim</option>
+                </select>
+              </Field>
+              {foiReportado==='sim' && (
+                <Field label="Para quem? (opcional)">
+                  <input className="w-full rounded-lg border p-2" value={paraQuem} onChange={(e)=>setParaQuem(e.target.value)} />
+                </Field>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <button onClick={()=>setStep(2)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button onClick={()=>setStep(4)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Próxima</button>
+            </div>
+          </div>
+        )}
+
+        {step===4 && (
+          <div className="space-y-4">
+            <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
+              <FilePicker files={files} setFiles={setFiles} />
+            </Field>
+            <div className="flex items-center justify-between">
+              <button onClick={()=>setStep(3)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button onClick={()=>setStep(5)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Próxima</button>
+            </div>
+          </div>
+        )}
+
+        {step===5 && (
+          <div className="space-y-4">
+            <Field label="Anonimato">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={anonimo} onChange={(e)=>setAnonimo(e.target.checked)} />
+                <span className="text-sm">Quero permanecer anônimo</span>
+              </label>
+            </Field>
+            {!anonimo && (
+              <div className="grid md:grid-cols-3 gap-4">
+                <Field label="Nome">
+                  <input className="w-full rounded-lg border p-2" value={contato.nome} onChange={(e)=>setContato({...contato, nome:e.target.value})} />
+                </Field>
+                <Field label="Email">
+                  <input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={(e)=>setContato({...contato, email:e.target.value})} />
+                </Field>
+                <Field label="Telefone">
+                  <input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={(e)=>setContato({...contato, telefone:e.target.value})} />
+                </Field>
+                <Field label="Preferência de contato">
+                  <select className="w-full rounded-lg border p-2" value={prefer} onChange={(e)=>setPrefer(e.target.value)}>
+                    <option value="email">Email</option>
+                    <option value="telefone">Telefone</option>
+                  </select>
+                </Field>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <button onClick={()=>setStep(4)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button onClick={onSubmit} disabled={!canSubmit} className={`px-4 py-2 rounded-lg text-white ${canSubmit? 'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>Enviar denúncia</button>
+            </div>
+          </div>
+        )}
       </Card>
 
       <AvisosSeguranca />
     </section>
   );
 }
-
 const AvisosSeguranca = () => (
   <Card className="space-y-3">
     <div className="flex items-start gap-3">

@@ -307,60 +307,79 @@ function Report() {
         {step===3 && (
           <div className="space-y-5">
             <div>
-              <h4 className="font-medium mb-2">Quem esteve envolvido?</h4>
-              <div className="space-y-3">
-                {envolvidos.map((e, i)=>(
-                  <div key={i} className="grid md:grid-cols-3 gap-3">
-                    <input className="rounded-lg border p-2" placeholder="Nome (opcional)" value={e.nome} onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))} />
-                    <input className="rounded-lg border p-2" placeholder="Cargo/Setor (opcional)" value={e.cargo} onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, cargo: ev.target.value}:x))} />
-                    <input className="rounded-lg border p-2" placeholder="Relação com o fato (opcional)" value={e.relacao} onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, relacao: ev.target.value}:x))} />
-                    <div className="col-span-full flex gap-2">
-                      <button onClick={()=>addRow(setEnvolvidos, {nome:'', cargo:'', relacao:''})} className="text-xs px-2 py-1 rounded border">+ adicionar envolvido</button>
-                      {envolvidos.length>1 && <button onClick={()=>delRow(setEnvolvidos, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+  <h4 className="font-medium mb-2">Quem esteve envolvido?</h4>
+  <div className="space-y-3">
+    {envolvidos.map((e, i)=>(
+      <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
+        <input
+          className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
+          placeholder="Nome (opcional)"
+          value={e.nome}
+          onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))}
+        />
+        <input
+          className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
+          placeholder="Cargo/Setor (opcional)"
+          value={e.cargo}
+          onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, cargo: ev.target.value}:x))}
+        />
+        <input
+          className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
+          placeholder="Relação com o fato (opcional)"
+          value={e.relacao}
+          onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, relacao: ev.target.value}:x))}
+        />
+        <div className="col-span-12 flex gap-2">
+          <button onClick={()=>addRow(setEnvolvidos, {nome:'', cargo:'', relacao:''})} className="text-xs px-2 py-1 rounded border">+ adicionar envolvido</button>
+          {envolvidos.length>1 && <button onClick={()=>delRow(setEnvolvidos, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
 
             <div>
-              <h4 className="font-medium mb-2">Testemunhas (se houver)</h4>
-              <div className="space-y-3">
-                {testemunhas.map((t, i)=>(
-                  <div key={i} className="grid md:grid-cols-2 gap-3">
-                    <input className="rounded-lg border p-2" placeholder="Nome (opcional)" value={t.nome} onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))} />
-                    <input className="rounded-lg border p-2" placeholder="Contato (opcional)" value={t.contato} onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, contato: ev.target.value}:x))} />
-                    <div className="col-span-full flex gap-2">
-                      <button onClick={()=>addRow(setTestemunhas, {nome:'', contato:''})} className="text-xs px-2 py-1 rounded border">+ adicionar testemunha</button>
-                      {testemunhas.length>1 && <button onClick={()=>delRow(setTestemunhas, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+  <h4 className="font-medium mb-2">Testemunhas (se houver)</h4>
+  <div className="space-y-3">
+    {testemunhas.map((t, i)=>(
+      <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
+        <input
+          className="w-full col-span-12 md:col-span-6 rounded-lg border p-2"
+          placeholder="Nome (opcional)"
+          value={t.nome}
+          onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))}
+        />
+        <input
+          className="w-full col-span-12 md:col-span-6 rounded-lg border p-2"
+          placeholder="Contato (opcional)"
+          value={t.contato}
+          onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, contato: ev.target.value}:x))}
+        />
+        <div className="col-span-12 flex gap-2">
+          <button onClick={()=>addRow(setTestemunhas, {nome:'', contato:''})} className="text-xs px-2 py-1 rounded border">+ adicionar testemunha</button>
+          {testemunhas.length>1 && <button onClick={()=>delRow(setTestemunhas, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
 
-            <div className="grid md:grid-cols-3 gap-4">
-              <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
-                <input className="w-full rounded-lg border p-2" placeholder="Ex.: ~R$ 5.000" value={valorFinanceiro} onChange={(e)=>setValorFinanceiro(e.target.value)} />
-              </Field>
-              <Field label="Você já reportou isso internamente?">
-                <select className="w-full rounded-lg border p-2" value={foiReportado} onChange={(e)=>setFoiReportado(e.target.value)}>
-                  <option value="nao">Não</option>
-                  <option value="sim">Sim</option>
-                </select>
-              </Field>
-              {foiReportado==='sim' && (
-                <Field label="Para quem? (opcional)">
-                  <input className="w-full rounded-lg border p-2" value={paraQuem} onChange={(e)=>setParaQuem(e.target.value)} />
-                </Field>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <button onClick={()=>setStep(2)} className="px-3 py-2 rounded-lg border">Voltar</button>
-              <button onClick={()=>setStep(4)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Próxima</button>
-            </div>
-          </div>
+            <div className="grid md:grid-cols-12 gap-4">
+  <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+    <input className="w-full rounded-lg border p-2" placeholder="Ex.: ~R$ 5.000" value={valorFinanceiro} onChange={(e)=>setValorFinanceiro(e.target.value)} />
+  </Field>
+  <Field label="Você já reportou isso internamente?">
+    <select className="w-full rounded-lg border p-2" value={foiReportado} onChange={(e)=>setFoiReportado(e.target.value)}>
+      <option value="nao">Não</option>
+      <option value="sim">Sim</option>
+    </select>
+  </Field>
+  <div className={`md:col-span-12 ${foiReportado==='sim' ? '' : 'hidden'}`}>
+    <Field label="Para quem? (opcional)">
+      <input className="w-full rounded-lg border p-2" value={paraQuem} onChange={(e)=>setParaQuem(e.target.value)} />
+    </Field>
+  </div>
+</div>
         )}
 
         {step===4 && (

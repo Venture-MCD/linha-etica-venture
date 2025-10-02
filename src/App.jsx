@@ -276,38 +276,88 @@ function Report() {
           </div>
         )}
 
-        {step===2 && (
-          <div className="space-y-4">
-            <div className="grid md:grid-cols-12 gap-4">
-  <div className="md:col-span-4">…</div>
-  <div className="md:col-span-4">…</div>
-  <div className="md:col-span-4">…</div>
-</div>
-              <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
-                <input className="w-full rounded-lg border p-2" placeholder="Ex.: 15/09/2025 ou Ago-Out/2025" value={quando} onChange={(e)=>setQuando(e.target.value)} />
-              </Field>
-              <Field label="Recorrência">
-                <select className="w-full rounded-lg border p-2" value={periodicidade} onChange={(e)=>setPeriodicidade(e.target.value)}>
-                  <option value="único">Evento único</option>
-                  <option value="recorrente">Recorrente</option>
-                  <option value="contínuo">Contínuo</option>
-                </select>
-              </Field>
-              <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
-                <input className="w-full rounded-lg border p-2" placeholder="Ex.: Loja KIZ - estoque" value={onde} onChange={(e)=>setOnde(e.target.value)} />
-              </Field>
-            </div>
-            <Field label="Descreva detalhadamente o ocorrido *" hint="O que aconteceu? Quem estava envolvido? Há evidências?">
-              <textarea className="w-full rounded-lg border p-3 min-h-[180px]" value={descricao} onChange={(e)=>setDescricao(e.target.value)} placeholder="Conte os fatos com o máximo de detalhes possíveis…" />
-              <div className={`text-xs mt-1 ${descricao.length<100?'text-rose-600':'text-slate-500'}`}>{descricao.length} / 100</div>
-            </Field>
-            <div className="flex items-center justify-between">
-              <button onClick={()=>setStep(1)} className="px-3 py-2 rounded-lg border">Voltar</button>
-              <button disabled={!canNext2} onClick={()=>setStep(3)} className={`px-4 py-2 rounded-lg text-white ${canNext2?'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>Próxima</button>
-            </div>
-          </div>
-        )}
+        {step === 2 && (
+  <div className="space-y-4">
+    <div className="grid md:grid-cols-12 gap-4">
+      <div className="md:col-span-4">
+        <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
+          <input
+            className="w-full rounded-lg border p-2"
+            placeholder="Ex.: 15/09/2025 ou Ago-Out/2025"
+            value={quando}
+            onChange={(e) => setQuando(e.target.value)}
+          />
+        </Field>
+      </div>
 
+      <div className="md:col-span-4">
+        <Field label="Recorrência">
+          <select
+            className="w-full rounded-lg border p-2"
+            value={periodicidade}
+            onChange={(e) => setPeriodicidade(e.target.value)}
+          >
+            <option value="único">Evento único</option>
+            <option value="recorrente">Recorrente</option>
+            <option value="contínuo">Contínuo</option>
+          </select>
+        </Field>
+      </div>
+
+      <div className="md:col-span-4">
+        <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
+          <input
+            className="w-full rounded-lg border p-2"
+            placeholder="Ex.: Loja KIZ - estoque"
+            value={onde}
+            onChange={(e) => setOnde(e.target.value)}
+          />
+        </Field>
+      </div>
+    </div>
+
+    <Field
+      label="Descreva detalhadamente o ocorrido *"
+      hint="O que aconteceu? Quem estava envolvido? Há evidências?"
+    >
+      <textarea
+        className="w-full rounded-lg border p-3 min-h-[180px]"
+        value={descricao}
+        onChange={(e) => setDescricao(e.target.value)}
+        placeholder="Conte os fatos com o máximo de detalhes possíveis…"
+      />
+      <div
+        className={
+          descricao.length < 100
+            ? "text-xs mt-1 text-rose-600"
+            : "text-xs mt-1 text-slate-500"
+        }
+      >
+        {descricao.length} / 100
+      </div>
+    </Field>
+
+    <div className="flex items-center justify-between">
+      <button
+        onClick={() => setStep(1)}
+        className="px-3 py-2 rounded-lg border"
+      >
+        Voltar
+      </button>
+      <button
+        disabled={!canNext2}
+        onClick={() => setStep(3)}
+        className={
+          canNext2
+            ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+            : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
+        }
+      >
+        Próxima
+      </button>
+    </div>
+  </div>
+)}
         {step===3 && (
           <div className="space-y-5">
             <div>

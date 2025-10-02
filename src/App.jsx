@@ -71,19 +71,19 @@ const Card = ({ children, className = "" }) => (
   <div className={`bg-white rounded-2xl shadow-sm border p-5 ${className}`}>{children}</div>
 );
 
+// Componente auxiliar para campos de formulário
 const Field = ({ label, required, hint, children }) => (
   <label className="block space-y-1.5">
     <span className="text-sm font-medium">
       {label} {required && <span className="text-rose-600">*</span>}
     </span>
-    {/* reserva altura para alinhar mesmo sem hint */}
+    {/* Reserva de altura para alinhar campos */}
     <div className={`text-xs ${hint ? "text-slate-500" : "opacity-0"}`}>
       {hint || "\u00A0"}
     </div>
     {children}
   </label>
 );
-
 const FilePicker = ({ files, setFiles }) => {
   const onPick = async (e) => {
     const arr = [...(files || [])];
@@ -252,9 +252,12 @@ function Report() {
 
   return (
     <section id="report" className="space-y-6">
-      <SectionTitle icon={FileText} title="Registrar denúncia" subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *." />
+      <SectionTitle
+        icon={FileText}
+        title="Registrar denúncia"
+        subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
+      />
 
-      {/* ABRE Card */}
       <Card className="space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs">
@@ -267,22 +270,33 @@ function Report() {
         {step === 1 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
-              <Field label="Unidade *">
-                <select className="w-full rounded-lg border p-2" value={unidade} onChange={e => setUnidade(e.target.value)}>
+              <Field label="Unidade *" hint=" ">
+                <select
+                  className="w-full rounded-lg border p-2"
+                  value={unidade}
+                  onChange={e => setUnidade(e.target.value)}
+                >
                   {UNIDADES.map(u => <option key={u}>{u}</option>)}
                 </select>
               </Field>
-              <Field label="Categoria *">
-                <select className="w-full rounded-lg border p-2" value={categoria} onChange={e => setCategoria(e.target.value)}>
+              <Field label="Categoria *" hint=" ">
+                <select
+                  className="w-full rounded-lg border p-2"
+                  value={categoria}
+                  onChange={e => setCategoria(e.target.value)}
+                >
                   {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
                 </select>
               </Field>
             </div>
+
             <div className="flex items-center justify-end">
               <button
                 disabled={!canNext1}
                 onClick={() => setStep(2)}
-                className={canNext1 ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700" : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
+                className={canNext1
+                  ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                  : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
               >
                 Próxima
               </button>
@@ -304,8 +318,10 @@ function Report() {
                   />
                 </Field>
               </div>
+
               <div className="md:col-span-4">
-                <Field label="Recorrência">
+                {/* hint vazio para alinhar com os vizinhos */}
+                <Field label="Recorrência" hint=" ">
                   <select
                     className="w-full rounded-lg border p-2"
                     value={periodicidade}
@@ -317,6 +333,7 @@ function Report() {
                   </select>
                 </Field>
               </div>
+
               <div className="md:col-span-4">
                 <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
                   <input
@@ -339,12 +356,9 @@ function Report() {
                 onChange={(e) => setDescricao(e.target.value)}
                 placeholder="Conte os fatos com o máximo de detalhes possíveis…"
               />
-              <div
-                className={
-                  descricao.length < 100
-                    ? "text-xs mt-1 text-rose-600"
-                    : "text-xs mt-1 text-slate-500"
-                }
+              <div className={descricao.length < 100
+                  ? "text-xs mt-1 text-rose-600"
+                  : "text-xs mt-1 text-slate-500"}
               >
                 {descricao.length} / 100
               </div>
@@ -355,7 +369,9 @@ function Report() {
               <button
                 disabled={!canNext2}
                 onClick={() => setStep(3)}
-                className={canNext2 ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700" : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
+                className={canNext2
+                  ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                  : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
               >
                 Próxima
               </button>
@@ -365,19 +381,46 @@ function Report() {
 
         {/* ETAPA 3 */}
         {step === 3 && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             <div>
               <h4 className="font-medium mb-2">Quem esteve envolvido?</h4>
               <div className="space-y-3">
                 {envolvidos.map((e, i) => (
                   <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
-                    <input className="w-full col-span-12 md:col-span-4 rounded-lg border p-2" placeholder="Nome (opcional)" value={e.nome} onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, nome: ev.target.value } : x))} />
-                    <input className="w-full col-span-12 md:col-span-4 rounded-lg border p-2" placeholder="Cargo/Setor (opcional)" value={e.cargo} onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, cargo: ev.target.value } : x))} />
-                    <input className="w-full col-span-12 md:col-span-4 rounded-lg border p-2" placeholder="Relação com o fato (opcional)" value={e.relacao} onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, relacao: ev.target.value } : x))} />
+                    <input
+                      className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
+                      placeholder="Nome (opcional)"
+                      value={e.nome}
+                      onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, nome: ev.target.value } : x))}
+                    />
+                    <input
+                      className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
+                      placeholder="Cargo/Setor (opcional)"
+                      value={e.cargo}
+                      onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, cargo: ev.target.value } : x))}
+                    />
+                    <input
+                      className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
+                      placeholder="Relação com o fato (opcional)"
+                      value={e.relacao}
+                      onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, relacao: ev.target.value } : x))}
+                    />
                     <div className="col-span-12 flex gap-2 mt-1">
-  <button onClick={...} className="text-xs px-2 py-1 rounded border">+ adicionar envolvido</button>
-  {envolvidos.length>1 && <button onClick={...} className="text-xs px-2 py-1 rounded border">remover</button>}
-</div>
+                      <button
+                        onClick={() => addRow(setEnvolvidos, { nome: "", cargo: "", relacao: "" })}
+                        className="text-xs px-2 py-1 rounded border"
+                      >
+                        + adicionar envolvido
+                      </button>
+                      {envolvidos.length > 1 && (
+                        <button
+                          onClick={() => delRow(setEnvolvidos, i)}
+                          className="text-xs px-2 py-1 rounded border"
+                        >
+                          remover
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -388,11 +431,33 @@ function Report() {
               <div className="space-y-3">
                 {testemunhas.map((t, i) => (
                   <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
-                    <input className="w-full col-span-12 md:col-span-6 rounded-lg border p-2" placeholder="Nome (opcional)" value={t.nome} onChange={ev => setTestemunhas(prev => prev.map((x, idx) => idx === i ? { ...x, nome: ev.target.value } : x))} />
-                    <input className="w-full col-span-12 md:col-span-6 rounded-lg border p-2" placeholder="Contato (opcional)" value={t.contato} onChange={ev => setTestemunhas(prev => prev.map((x, idx) => idx === i ? { ...x, contato: ev.target.value } : x))} />
-                    <div className="col-span-12 flex gap-2">
-                      <button onClick={() => addRow(setTestemunhas, { nome: "", contato: "" })} className="text-xs px-2 py-1 rounded border">+ adicionar testemunha</button>
-                      {testemunhas.length > 1 && <button onClick={() => delRow(setTestemunhas, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+                    <input
+                      className="w-full col-span-12 md:col-span-6 rounded-lg border p-2"
+                      placeholder="Nome (opcional)"
+                      value={t.nome}
+                      onChange={ev => setTestemunhas(prev => prev.map((x, idx) => idx === i ? { ...x, nome: ev.target.value } : x))}
+                    />
+                    <input
+                      className="w-full col-span-12 md:col-span-6 rounded-lg border p-2"
+                      placeholder="Contato (opcional)"
+                      value={t.contato}
+                      onChange={ev => setTestemunhas(prev => prev.map((x, idx) => idx === i ? { ...x, contato: ev.target.value } : x))}
+                    />
+                    <div className="col-span-12 flex gap-2 mt-1">
+                      <button
+                        onClick={() => addRow(setTestemunhas, { nome: "", contato: "" })}
+                        className="text-xs px-2 py-1 rounded border"
+                      >
+                        + adicionar testemunha
+                      </button>
+                      {testemunhas.length > 1 && (
+                        <button
+                          onClick={() => delRow(setTestemunhas, i)}
+                          className="text-xs px-2 py-1 rounded border"
+                        >
+                          remover
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -400,43 +465,41 @@ function Report() {
             </div>
 
             <div className="grid md:grid-cols-12 gap-4 items-start">
-  <div className="md:col-span-6">
-    <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
-      <input
-        className="w-full rounded-lg border p-2"
-        placeholder="Ex.: ~R$ 5.000"
-        value={valorFinanceiro}
-        onChange={(e) => setValorFinanceiro(e.target.value)}
-      />
-    </Field>
-  </div>
+              <div className="md:col-span-6">
+                <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+                  <input
+                    className="w-full rounded-lg border p-2"
+                    placeholder="Ex.: ~R$ 5.000"
+                    value={valorFinanceiro}
+                    onChange={(e) => setValorFinanceiro(e.target.value)}
+                  />
+                </Field>
+              </div>
 
-  <div className="md:col-span-6">
-    {/* hint " " para reservar a mesma linha cinza e alinhar com a coluna da esquerda */}
-    <Field label="Você já reportou isso internamente?" hint=" ">
-      <select
-        className="w-full rounded-lg border p-2"
-        value={foiReportado}
-        onChange={(e) => setFoiReportado(e.target.value)}
-      >
-        <option value="nao">Não</option>
-        <option value="sim">Sim</option>
-      </select>
-    </Field>
-  </div>
+              <div className="md:col-span-6">
+                <Field label="Você já reportou isso internamente?" hint=" ">
+                  <select
+                    className="w-full rounded-lg border p-2"
+                    value={foiReportado}
+                    onChange={(e) => setFoiReportado(e.target.value)}
+                  >
+                    <option value="nao">Não</option>
+                    <option value="sim">Sim</option>
+                  </select>
+                </Field>
+              </div>
 
-  {foiReportado === "sim" && (
-    <div className="md:col-span-12">
-      <Field label="Para quem? (opcional)" hint="Departamento, nome ou canal">
-        <input
-          className="w-full rounded-lg border p-2"
-          value={paraQuem}
-          onChange={(e) => setParaQuem(e.target.value)}
-        />
-      </Field>
-    </div>
-  )}
-</div>
+              {foiReportado === "sim" && (
+                <div className="md:col-span-12">
+                  <Field label="Para quem? (opcional)" hint="Departamento, nome ou canal">
+                    <input
+                      className="w-full rounded-lg border p-2"
+                      value={paraQuem}
+                      onChange={(e) => setParaQuem(e.target.value)}
+                    />
+                  </Field>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between">
@@ -462,26 +525,54 @@ function Report() {
         {/* ETAPA 5 */}
         {step === 5 && (
           <div className="space-y-4">
-            <Field label="Anonimato">
+            <Field label="Anonimato" hint=" ">
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked={anonimo} onChange={e => setAnonimo(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={anonimo}
+                  onChange={e => setAnonimo(e.target.checked)}
+                />
                 <span className="text-sm">Quero permanecer anônimo</span>
               </label>
             </Field>
+
             {!anonimo && (
               <div className="grid md:grid-cols-12 gap-4">
                 <div className="md:col-span-4">
-                  <Field label="Nome"><input className="w-full rounded-lg border p-2" value={contato.nome} onChange={e => setContato({ ...contato, nome: e.target.value })} /></Field>
+                  <Field label="Nome" hint=" ">
+                    <input
+                      className="w-full rounded-lg border p-2"
+                      value={contato.nome}
+                      onChange={e => setContato({ ...contato, nome: e.target.value })}
+                    />
+                  </Field>
                 </div>
                 <div className="md:col-span-4">
-                  <Field label="Email"><input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={e => setContato({ ...contato, email: e.target.value })} /></Field>
+                  <Field label="Email" hint=" ">
+                    <input
+                      type="email"
+                      className="w-full rounded-lg border p-2"
+                      value={contato.email}
+                      onChange={e => setContato({ ...contato, email: e.target.value })}
+                    />
+                  </Field>
                 </div>
                 <div className="md:col-span-4">
-                  <Field label="Telefone"><input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={e => setContato({ ...contato, telefone: e.target.value })} /></Field>
+                  <Field label="Telefone" hint=" ">
+                    <input
+                      className="w-full rounded-lg border p-2"
+                      value={contato.telefone}
+                      onChange={e => setContato({ ...contato, telefone: e.target.value })}
+                    />
+                  </Field>
                 </div>
                 <div className="md:col-span-4">
-                  <Field label="Preferência de contato">
-                    <select className="w-full rounded-lg border p-2" value={prefer} onChange={e => setPrefer(e.target.value)}>
+                  <Field label="Preferência de contato" hint=" ">
+                    <select
+                      className="w-full rounded-lg border p-2"
+                      value={prefer}
+                      onChange={e => setPrefer(e.target.value)}
+                    >
                       <option value="email">Email</option>
                       <option value="telefone">Telefone</option>
                     </select>
@@ -489,12 +580,15 @@ function Report() {
                 </div>
               </div>
             )}
+
             <div className="flex items-center justify-between">
               <button onClick={() => setStep(4)} className="px-3 py-2 rounded-lg border">Voltar</button>
               <button
                 onClick={onSubmit}
                 disabled={!canSubmit}
-                className={canSubmit ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700" : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
+                className={canSubmit
+                  ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                  : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
               >
                 Enviar denúncia
               </button>
@@ -502,7 +596,6 @@ function Report() {
           </div>
         )}
       </Card>
-      {/* FECHA Card */}
 
       <AvisosSeguranca />
     </section>

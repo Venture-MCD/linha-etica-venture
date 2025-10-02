@@ -179,7 +179,7 @@ function Report() {
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
 
-  // Perguntas detalhadas
+  // Perguntas
   const [quando, setQuando] = useState("");
   const [periodicidade, setPeriodicidade] = useState("único");
   const [onde, setOnde] = useState("");
@@ -202,8 +202,8 @@ function Report() {
   const canNext2 = descricao.trim().length >= 100 && !!onde && !!quando;
   const canSubmit = canNext1 && canNext2;
 
-  const addRow = (listSetter, emptyObj) => listSetter(prev => [...prev, { ...emptyObj }]);
-  const delRow = (listSetter, idx) => listSetter(prev => prev.filter((_, i)=> i!==idx));
+  const addRow = (setList, emptyObj) => setList(prev => [...prev, { ...emptyObj }]);
+  const delRow = (setList, idx) => setList(prev => prev.filter((_, i) => i !== idx));
 
   const onSubmit = () => {
     if (!canSubmit) {
@@ -221,11 +221,11 @@ function Report() {
         quando,
         periodicidade,
         onde,
-        envolvidos: envolvidos.filter(e=>e.nome||e.cargo||e.relacao),
-        testemunhas: testemunhas.filter(t=>t.nome||t.contato),
+        envolvidos: envolvidos.filter(e => e.nome || e.cargo || e.relacao),
+        testemunhas: testemunhas.filter(t => t.nome || t.contato),
         valorFinanceiro,
         foiReportado,
-        paraQuem: foiReportado==='sim'? paraQuem : "",
+        paraQuem: foiReportado === "sim" ? paraQuem : "",
       },
       descricao: descricao.trim(),
       anonimo,
@@ -239,245 +239,250 @@ function Report() {
     alert(`Denúncia registrada. Protocolo: ${protocolo}`);
   };
 
-  const Stepper = () => (
-    <div className="flex items-center gap-2 text-xs">
-      {[1,2,3,4,5].map(n => (
-        <div key={n} className={`px-2 py-1 rounded-full border ${step===n?'bg-emerald-600 text-white border-emerald-700':'bg-white'}`}>Etapa {n}</div>
-      ))}
-    </div>
-  );
+  const StepChip = ({ n }) => {
+    const active = step === n;
+    const cls = active
+      ? "px-2 py-1 rounded-full border bg-emerald-600 text-white border-emerald-700"
+      : "px-2 py-1 rounded-full border bg-white";
+    return <div className={cls}>Etapa {n}</div>;
+  };
 
   return (
     <section id="report" className="space-y-6">
       <SectionTitle icon={FileText} title="Registrar denúncia" subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *." />
+
+      {/* ABRE Card */}
       <Card className="space-y-5">
         <div className="flex items-center justify-between">
-          <Stepper />
+          <div className="flex items-center gap-2 text-xs">
+            {[1, 2, 3, 4, 5].map(n => <StepChip key={n} n={n} />)}
+          </div>
           <div className="text-xs text-slate-500">Descrição mínima: 100 caracteres</div>
         </div>
 
-        {step===1 && (
+        {/* ETAPA 1 */}
+        {step === 1 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <Field label="Unidade *">
-                <select className="w-full rounded-lg border p-2" value={unidade} onChange={(e)=>setUnidade(e.target.value)}>
+                <select className="w-full rounded-lg border p-2" value={unidade} onChange={e => setUnidade(e.target.value)}>
                   {UNIDADES.map(u => <option key={u}>{u}</option>)}
                 </select>
               </Field>
               <Field label="Categoria *">
-                <select className="w-full rounded-lg border p-2" value={categoria} onChange={(e)=>setCategoria(e.target.value)}>
+                <select className="w-full rounded-lg border p-2" value={categoria} onChange={e => setCategoria(e.target.value)}>
                   {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
                 </select>
               </Field>
             </div>
             <div className="flex items-center justify-end">
-              <button disabled={!canNext1} onClick={()=>setStep(2)} className={`px-4 py-2 rounded-lg text-white ${canNext1?'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>Próxima</button>
+              <button
+                disabled={!canNext1}
+                onClick={() => setStep(2)}
+                className={canNext1 ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700" : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
+              >
+                Próxima
+              </button>
             </div>
           </div>
         )}
 
+        {/* ETAPA 2 */}
         {step === 2 && (
-  <div className="space-y-4">
-    <div className="grid md:grid-cols-12 gap-4">
-      <div className="md:col-span-4">
-        <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
-          <input
-            className="w-full rounded-lg border p-2"
-            placeholder="Ex.: 15/09/2025 ou Ago-Out/2025"
-            value={quando}
-            onChange={(e) => setQuando(e.target.value)}
-          />
-        </Field>
-      </div>
-
-      <div className="md:col-span-4">
-        <Field label="Recorrência">
-          <select
-            className="w-full rounded-lg border p-2"
-            value={periodicidade}
-            onChange={(e) => setPeriodicidade(e.target.value)}
-          >
-            <option value="único">Evento único</option>
-            <option value="recorrente">Recorrente</option>
-            <option value="contínuo">Contínuo</option>
-          </select>
-        </Field>
-      </div>
-
-      <div className="md:col-span-4">
-        <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
-          <input
-            className="w-full rounded-lg border p-2"
-            placeholder="Ex.: Loja KIZ - estoque"
-            value={onde}
-            onChange={(e) => setOnde(e.target.value)}
-          />
-        </Field>
-      </div>
-    </div>
-
-    <Field
-      label="Descreva detalhadamente o ocorrido *"
-      hint="O que aconteceu? Quem estava envolvido? Há evidências?"
-    >
-      <textarea
-        className="w-full rounded-lg border p-3 min-h-[180px]"
-        value={descricao}
-        onChange={(e) => setDescricao(e.target.value)}
-        placeholder="Conte os fatos com o máximo de detalhes possíveis…"
-      />
-      <div
-        className={
-          descricao.length < 100
-            ? "text-xs mt-1 text-rose-600"
-            : "text-xs mt-1 text-slate-500"
-        }
-      >
-        {descricao.length} / 100
-      </div>
-    </Field>
-
-    <div className="flex items-center justify-between">
-      <button
-        onClick={() => setStep(1)}
-        className="px-3 py-2 rounded-lg border"
-      >
-        Voltar
-      </button>
-      <button
-        disabled={!canNext2}
-        onClick={() => setStep(3)}
-        className={
-          canNext2
-            ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
-            : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
-        }
-      >
-        Próxima
-      </button>
-    </div>
-  </div>
-)}
-        {step===3 && (
-          <div className="space-y-5">
-            <div>
-  <h4 className="font-medium mb-2">Quem esteve envolvido?</h4>
-  <div className="space-y-3">
-    {envolvidos.map((e, i)=>(
-      <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
-        <input
-          className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
-          placeholder="Nome (opcional)"
-          value={e.nome}
-          onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))}
-        />
-        <input
-          className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
-          placeholder="Cargo/Setor (opcional)"
-          value={e.cargo}
-          onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, cargo: ev.target.value}:x))}
-        />
-        <input
-          className="w-full col-span-12 md:col-span-4 rounded-lg border p-2"
-          placeholder="Relação com o fato (opcional)"
-          value={e.relacao}
-          onChange={(ev)=>setEnvolvidos(prev=>prev.map((x,idx)=> idx===i? {...x, relacao: ev.target.value}:x))}
-        />
-        <div className="col-span-12 flex gap-2">
-          <button onClick={()=>addRow(setEnvolvidos, {nome:'', cargo:'', relacao:''})} className="text-xs px-2 py-1 rounded border">+ adicionar envolvido</button>
-          {envolvidos.length>1 && <button onClick={()=>delRow(setEnvolvidos, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
-        </div>
-      </div>
-    ))}
-  </div>
-</div>
-
-            <div>
-  <h4 className="font-medium mb-2">Testemunhas (se houver)</h4>
-  <div className="space-y-3">
-    {testemunhas.map((t, i)=>(
-      <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
-        <input
-          className="w-full col-span-12 md:col-span-6 rounded-lg border p-2"
-          placeholder="Nome (opcional)"
-          value={t.nome}
-          onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, nome: ev.target.value}:x))}
-        />
-        <input
-          className="w-full col-span-12 md:col-span-6 rounded-lg border p-2"
-          placeholder="Contato (opcional)"
-          value={t.contato}
-          onChange={(ev)=>setTestemunhas(prev=>prev.map((x,idx)=> idx===i? {...x, contato: ev.target.value}:x))}
-        />
-        <div className="col-span-12 flex gap-2">
-          <button onClick={()=>addRow(setTestemunhas, {nome:'', contato:''})} className="text-xs px-2 py-1 rounded border">+ adicionar testemunha</button>
-          {testemunhas.length>1 && <button onClick={()=>delRow(setTestemunhas, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
-        </div>
-      </div>
-    ))}
-  </div>
-</div>
-
+          <div className="space-y-4">
             <div className="grid md:grid-cols-12 gap-4">
-  <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
-    <input className="w-full rounded-lg border p-2" placeholder="Ex.: ~R$ 5.000" value={valorFinanceiro} onChange={(e)=>setValorFinanceiro(e.target.value)} />
-  </Field>
-  <Field label="Você já reportou isso internamente?">
-    <select className="w-full rounded-lg border p-2" value={foiReportado} onChange={(e)=>setFoiReportado(e.target.value)}>
-      <option value="nao">Não</option>
-      <option value="sim">Sim</option>
-    </select>
-  </Field>
-  <div className={`md:col-span-12 ${foiReportado==='sim' ? '' : 'hidden'}`}>
-    <Field label="Para quem? (opcional)">
-      <input className="w-full rounded-lg border p-2" value={paraQuem} onChange={(e)=>setParaQuem(e.target.value)} />
-    </Field>
-  </div>
-</div>
+              <div className="md:col-span-4">
+                <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
+                  <input
+                    className="w-full rounded-lg border p-2"
+                    placeholder="Ex.: 15/09/2025 ou Ago-Out/2025"
+                    value={quando}
+                    onChange={(e) => setQuando(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="md:col-span-4">
+                <Field label="Recorrência">
+                  <select
+                    className="w-full rounded-lg border p-2"
+                    value={periodicidade}
+                    onChange={(e) => setPeriodicidade(e.target.value)}
+                  >
+                    <option value="único">Evento único</option>
+                    <option value="recorrente">Recorrente</option>
+                    <option value="contínuo">Contínuo</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="md:col-span-4">
+                <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
+                  <input
+                    className="w-full rounded-lg border p-2"
+                    placeholder="Ex.: Loja KIZ - estoque"
+                    value={onde}
+                    onChange={(e) => setOnde(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <Field
+              label="Descreva detalhadamente o ocorrido *"
+              hint="O que aconteceu? Quem estava envolvido? Há evidências?"
+            >
+              <textarea
+                className="w-full rounded-lg border p-3 min-h-[180px]"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                placeholder="Conte os fatos com o máximo de detalhes possíveis…"
+              />
+              <div
+                className={
+                  descricao.length < 100
+                    ? "text-xs mt-1 text-rose-600"
+                    : "text-xs mt-1 text-slate-500"
+                }
+              >
+                {descricao.length} / 100
+              </div>
+            </Field>
+
+            <div className="flex items-center justify-between">
+              <button onClick={() => setStep(1)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button
+                disabled={!canNext2}
+                onClick={() => setStep(3)}
+                className={canNext2 ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700" : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
         )}
 
-        {step===4 && (
+        {/* ETAPA 3 */}
+        {step === 3 && (
+          <div className="space-y-5">
+            <div>
+              <h4 className="font-medium mb-2">Quem esteve envolvido?</h4>
+              <div className="space-y-3">
+                {envolvidos.map((e, i) => (
+                  <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
+                    <input className="w-full col-span-12 md:col-span-4 rounded-lg border p-2" placeholder="Nome (opcional)" value={e.nome} onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, nome: ev.target.value } : x))} />
+                    <input className="w-full col-span-12 md:col-span-4 rounded-lg border p-2" placeholder="Cargo/Setor (opcional)" value={e.cargo} onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, cargo: ev.target.value } : x))} />
+                    <input className="w-full col-span-12 md:col-span-4 rounded-lg border p-2" placeholder="Relação com o fato (opcional)" value={e.relacao} onChange={ev => setEnvolvidos(prev => prev.map((x, idx) => idx === i ? { ...x, relacao: ev.target.value } : x))} />
+                    <div className="col-span-12 flex gap-2">
+                      <button onClick={() => addRow(setEnvolvidos, { nome: "", cargo: "", relacao: "" })} className="text-xs px-2 py-1 rounded border">+ adicionar envolvido</button>
+                      {envolvidos.length > 1 && <button onClick={() => delRow(setEnvolvidos, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-medium mb-2">Testemunhas (se houver)</h4>
+              <div className="space-y-3">
+                {testemunhas.map((t, i) => (
+                  <div key={i} className="grid md:grid-cols-12 gap-3 items-start">
+                    <input className="w-full col-span-12 md:col-span-6 rounded-lg border p-2" placeholder="Nome (opcional)" value={t.nome} onChange={ev => setTestemunhas(prev => prev.map((x, idx) => idx === i ? { ...x, nome: ev.target.value } : x))} />
+                    <input className="w-full col-span-12 md:col-span-6 rounded-lg border p-2" placeholder="Contato (opcional)" value={t.contato} onChange={ev => setTestemunhas(prev => prev.map((x, idx) => idx === i ? { ...x, contato: ev.target.value } : x))} />
+                    <div className="col-span-12 flex gap-2">
+                      <button onClick={() => addRow(setTestemunhas, { nome: "", contato: "" })} className="text-xs px-2 py-1 rounded border">+ adicionar testemunha</button>
+                      {testemunhas.length > 1 && <button onClick={() => delRow(setTestemunhas, i)} className="text-xs px-2 py-1 rounded border">remover</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-12 gap-4">
+              <div className="md:col-span-4">
+                <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+                  <input className="w-full rounded-lg border p-2" placeholder="Ex.: ~R$ 5.000" value={valorFinanceiro} onChange={e => setValorFinanceiro(e.target.value)} />
+                </Field>
+              </div>
+              <div className="md:col-span-4">
+                <Field label="Você já reportou isso internamente?">
+                  <select className="w-full rounded-lg border p-2" value={foiReportado} onChange={e => setFoiReportado(e.target.value)}>
+                    <option value="nao">Não</option>
+                    <option value="sim">Sim</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="md:col-span-12">
+                {foiReportado === "sim" && (
+                  <Field label="Para quem? (opcional)">
+                    <input className="w-full rounded-lg border p-2" value={paraQuem} onChange={e => setParaQuem(e.target.value)} />
+                  </Field>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <button onClick={() => setStep(2)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button onClick={() => setStep(4)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Próxima</button>
+            </div>
+          </div>
+        )}
+
+        {/* ETAPA 4 */}
+        {step === 4 && (
           <div className="space-y-4">
             <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
               <FilePicker files={files} setFiles={setFiles} />
             </Field>
             <div className="flex items-center justify-between">
-              <button onClick={()=>setStep(3)} className="px-3 py-2 rounded-lg border">Voltar</button>
-              <button onClick={()=>setStep(5)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Próxima</button>
+              <button onClick={() => setStep(3)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button onClick={() => setStep(5)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Próxima</button>
             </div>
           </div>
         )}
 
-        {step===5 && (
+        {/* ETAPA 5 */}
+        {step === 5 && (
           <div className="space-y-4">
             <Field label="Anonimato">
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked={anonimo} onChange={(e)=>setAnonimo(e.target.checked)} />
+                <input type="checkbox" checked={anonimo} onChange={e => setAnonimo(e.target.checked)} />
                 <span className="text-sm">Quero permanecer anônimo</span>
               </label>
             </Field>
             {!anonimo && (
               <div className="grid md:grid-cols-12 gap-4">
-  <Field label="Nome"><input className="w-full rounded-lg border p-2" value={contato.nome} onChange={(e)=>setContato({...contato, nome:e.target.value})} /></Field>
-  <Field label="Email"><input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={(e)=>setContato({...contato, email:e.target.value})} /></Field>
-  <Field label="Telefone"><input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={(e)=>setContato({...contato, telefone:e.target.value})} /></Field>
-  <div className="md:col-span-4">
-    <Field label="Preferência de contato">
-      <select className="w-full rounded-lg border p-2" value={prefer} onChange={(e)=>setPrefer(e.target.value)}>
-        <option value="email">Email</option>
-        <option value="telefone">Telefone</option>
-      </select>
-    </Field>
-  </div>
-</div>
+                <div className="md:col-span-4">
+                  <Field label="Nome"><input className="w-full rounded-lg border p-2" value={contato.nome} onChange={e => setContato({ ...contato, nome: e.target.value })} /></Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Email"><input type="email" className="w-full rounded-lg border p-2" value={contato.email} onChange={e => setContato({ ...contato, email: e.target.value })} /></Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Telefone"><input className="w-full rounded-lg border p-2" value={contato.telefone} onChange={e => setContato({ ...contato, telefone: e.target.value })} /></Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Preferência de contato">
+                    <select className="w-full rounded-lg border p-2" value={prefer} onChange={e => setPrefer(e.target.value)}>
+                      <option value="email">Email</option>
+                      <option value="telefone">Telefone</option>
+                    </select>
+                  </Field>
+                </div>
+              </div>
             )}
             <div className="flex items-center justify-between">
-              <button onClick={()=>setStep(4)} className="px-3 py-2 rounded-lg border">Voltar</button>
-              <button onClick={onSubmit} disabled={!canSubmit} className={`px-4 py-2 rounded-lg text-white ${canSubmit? 'bg-emerald-600 hover:bg-emerald-700':'bg-slate-300 cursor-not-allowed'}`}>Enviar denúncia</button>
+              <button onClick={() => setStep(4)} className="px-3 py-2 rounded-lg border">Voltar</button>
+              <button
+                onClick={onSubmit}
+                disabled={!canSubmit}
+                className={canSubmit ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700" : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"}
+              >
+                Enviar denúncia
+              </button>
             </div>
           </div>
         )}
       </Card>
+      {/* FECHA Card */}
 
       <AvisosSeguranca />
     </section>

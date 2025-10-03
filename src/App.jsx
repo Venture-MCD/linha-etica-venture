@@ -41,7 +41,7 @@ const SectionTitle = ({ icon: Icon, title, subtitle }) => (
 /* =========================================================
    LOGO via BASE_URL (funciona no GitHub Pages)
    ========================================================= */
-const logo = import.meta.env.BASE_URL + "logoventure.jpeg";
+const logo = import.meta.env.BASE_URL + "logo-venture.jpeg";
 
 /* =========================================================
    NAV com logo + nome

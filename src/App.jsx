@@ -94,7 +94,7 @@ const AvisosSeguranca = () => <div className="text-xs text-slate-500">⚠️ Pro
 function Home() {
   return (
     <section id="home" className="space-y-6">
-      <SectionTitle icon={ShieldAlert} title="Bem-vindo à Linha Ética" subtitle="Canal independente para relatos de má conduta, riscos e violações." />
+      <SectionTitle icon={ShieldAlert} title="Bem-vindo à Linha Ética" subtitle="Canal independente para denúncias de má conduta, riscos e violações." />
 
       <div className="grid md:grid-cols-3 gap-4">
         <Card>

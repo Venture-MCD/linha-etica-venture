@@ -70,7 +70,7 @@ const Nav = () => (
   <nav className="flex items-center justify-between mb-6">
     <a href="#/" className="flex items-center gap-2">
       {/* SE usar "Logo Venture.jpeg", troque src abaixo para "/Logo%20Venture.jpeg" */}
-      <img src="/Logo%20Venture.jpeg" alt="Venture" className="h-7 w-auto object-contain" />
+      <img src="/Logo%20Venture.jpg" alt="Venture" className="h-7 w-auto object-contain" />
       <span className="text-base font-semibold tracking-tight">Venture</span>
     </a>
     <div className="flex gap-4">
@@ -114,7 +114,7 @@ function Home() {
       {/* Cabeçalho compacto de marca dentro da Home */}
       <div className="flex items-center gap-2">
         {/* SE usar "Logo Venture.jpeg", troque src abaixo para "/Logo%20Venture.jpeg" */}
-        <img src="//Logo%20Venture.jpeg" alt="Venture" className="h-8 w-auto object-contain" />
+        <img src="/Logo%20Venture.jpg" alt="Venture" className="h-8 w-auto object-contain" />
         <h1 className="text-xl font-bold">Venture</h1>
       </div>
 

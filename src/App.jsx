@@ -246,7 +246,7 @@ function Report() {
               </div>
             </div>
 
-            <Field label="Descreva detalhadamente o ocorrido *" hint="O que aconteceu? Quem estava envolvido? Há evidências?">
+            <Field label="Descreva detalhadamente o ocorrido *" hint="O que aconteceu? Quem estava envolvido? Há evidências? Coloque o máximo de detalhes e nomes">
               <textarea className="w-full rounded-lg border p-3 min-h-[180px]" value={descricao} onChange={(e)=>setDescricao(e.target.value)} placeholder="Conte os fatos com o máximo de detalhes possíveis…" />
               <div className={descricao.trim().length < 100 ? "text-xs mt-1 text-rose-600" : "text-xs mt-1 text-slate-500"}>{descricao.trim().length} / 100</div>
             </Field>

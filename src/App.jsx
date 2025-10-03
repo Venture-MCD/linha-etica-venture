@@ -640,7 +640,163 @@ function Status() {
 }
 
 /* =========================================================
-   Router por hash
+   ADMIN — painel local para ver/filtrar/exportar denúncias
+   ========================================================= */
+function Admin() {
+  const [q, setQ] = useState("");
+  const [casos, setCasos] = useState(loadCasos());
+  const [sel, setSel] = useState(null);
+
+  useEffect(() => {
+    const onFocus = () => setCasos(loadCasos());
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  const filtra = (c) => {
+    if (!q.trim()) return true;
+    const s = q.toLowerCase();
+    return (
+      c.protocolo?.toLowerCase().includes(s) ||
+      c.unidade?.toLowerCase().includes(s) ||
+      c.categoria?.toLowerCase().includes(s) ||
+      c.descricao?.toLowerCase().includes(s)
+    );
+  };
+
+  const exportCsv = () => {
+    const rows = [
+      ["protocolo","createdAt","unidade","categoria","onde","data","periodicidade","impactoFinanceiro","foiReportado","paraQuem","anonimo","contato","status","descricao"]
+    ];
+    for (const c of casos.filter(filtra)) {
+      rows.push([
+        c.protocolo,
+        c.createdAt,
+        c.unidade,
+        c.categoria,
+        c.perguntas?.onde || "",
+        c.perguntas?.periodo?.data || "",
+        c.perguntas?.periodicidade || "",
+        c.perguntas?.valorFinanceiro || "",
+        c.perguntas?.foiReportado || "",
+        c.perguntas?.paraQuem || "",
+        c.anonimo ? "sim" : "não",
+        c.anonimo ? "" : JSON.stringify(c.contato || {}),
+        c.status || "",
+        (c.descricao || "").replace(/\n/g, " ")
+      ]);
+    }
+    const csv = rows.map(r => r.map(v => `"${String(v || "").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "denuncias.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const limparTudo = () => {
+    if (!confirm("Apagar todos os registros locais?")) return;
+    localStorage.removeItem("casos");
+    setCasos([]);
+    setSel(null);
+  };
+
+  const lista = casos.filter(filtra);
+
+  return (
+    <section className="space-y-4">
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold">Painel (local)</h3>
+          <div className="flex gap-2">
+            <button onClick={exportCsv} className="px-3 py-2 rounded-lg border">Exportar CSV</button>
+            <button onClick={limparTudo} className="px-3 py-2 rounded-lg border text-rose-600">Limpar tudo</button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            className={inputClass}
+            placeholder="Buscar por protocolo, unidade, categoria, descrição…"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+          />
+          <a href="#/" className="px-3 py-2 rounded-lg border">Home</a>
+        </div>
+
+        <div className="overflow-auto rounded-lg border">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="p-2 border-b">Protocolo</th>
+                <th className="p-2 border-b">Data</th>
+                <th className="p-2 border-b">Unidade</th>
+                <th className="p-2 border-b">Categoria</th>
+                <th className="p-2 border-b">Onde</th>
+                <th className="p-2 border-b">Anon.</th>
+                <th className="p-2 border-b">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.length === 0 && (
+                <tr><td colSpan={7} className="p-3 text-center text-slate-500">Sem registros.</td></tr>
+              )}
+              {lista.map((c, i) => (
+                <tr key={i} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSel(c)}>
+                  <td className="p-2 border-b font-mono">{c.protocolo}</td>
+                  <td className="p-2 border-b">{new Date(c.createdAt).toLocaleString()}</td>
+                  <td className="p-2 border-b">{c.unidade}</td>
+                  <td className="p-2 border-b">{c.categoria}</td>
+                  <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
+                  <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
+                  <td className="p-2 border-b">{c.status || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {sel && (
+          <div className="rounded-lg border p-3 bg-slate-50">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm text-slate-500">Protocolo</div>
+                <div className="font-mono font-semibold">{sel.protocolo}</div>
+              </div>
+              <button className="text-sm underline" onClick={()=>setSel(null)}>fechar</button>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3 mt-2">
+              <div><div className="text-xs text-slate-500">Unidade</div><div>{sel.unidade}</div></div>
+              <div><div className="text-xs text-slate-500">Categoria</div><div>{sel.categoria}</div></div>
+              <div><div className="text-xs text-slate-500">Onde</div><div>{sel.perguntas?.onde || "-"}</div></div>
+              <div><div className="text-xs text-slate-500">Quando</div><div>{sel.perguntas?.periodo?.data || "-"}</div></div>
+              <div><div className="text-xs text-slate-500">Recorrência</div><div>{sel.perguntas?.periodicidade || "-"}</div></div>
+              <div><div className="text-xs text-slate-500">Impacto financeiro</div><div>{sel.perguntas?.valorFinanceiro || "-"}</div></div>
+              <div><div className="text-xs text-slate-500">Reportado internamente</div><div>{sel.perguntas?.foiReportado === "sim" ? `Sim (${sel.perguntas?.paraQuem || "—"})` : "Não"}</div></div>
+              <div><div className="text-xs text-slate-500">Anonimato</div><div>{sel.anonimo ? "Sim" : "Não"}</div></div>
+            </div>
+            <div className="mt-3">
+              <div className="text-xs text-slate-500">Descrição</div>
+              <div className="whitespace-pre-wrap">{sel.descricao}</div>
+            </div>
+            {!sel.anonimo && (
+              <div className="mt-3 grid md:grid-cols-3 gap-3">
+                <div><div className="text-xs text-slate-500">Nome</div><div>{sel.contato?.nome || "-"}</div></div>
+                <div><div className="text-xs text-slate-500">Email</div><div>{sel.contato?.email || "-"}</div></div>
+                <div><div className="text-xs text-slate-500">Telefone</div><div>{sel.contato?.telefone || "-"}</div></div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      <AvisosSeguranca />
+    </section>
+  );
+}
+
+/* =========================================================
+   Router por hash (inclui /admin)
    ========================================================= */
 function AppRouter() {
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -658,6 +814,8 @@ function AppRouter() {
         <Report />
       ) : route.startsWith("#/status") ? (
         <Status />
+      ) : route.startsWith("#/admin") ? (
+        <Admin />
       ) : (
         <Home />
       )}

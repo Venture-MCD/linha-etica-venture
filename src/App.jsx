@@ -112,7 +112,7 @@ function Home() {
       <SectionTitle
         icon={ShieldAlert}
         title="Bem-vindo à Linha Ética"
-        subtitle="Canal independente para relatos de má conduta, riscos e violações."
+        subtitle="Canal independente para denúncias de má conduta, riscos e violações."
       />
 
       <div className="grid md:grid-cols-3 gap-4">
@@ -385,7 +385,7 @@ function Report() {
 
             <Field
               label="Descreva detalhadamente o ocorrido *"
-              hint="O que aconteceu? Quem estava envolvido? Há evidências?"
+              hint="O que aconteceu? Quem estava envolvido? Há evidências? Coloque o máximo de detalhes e nomes"
             >
               <textarea
                 className="w-full rounded-lg border p-3 min-h-[180px]"

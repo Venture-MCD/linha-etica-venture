@@ -8,6 +8,7 @@ const Field = ({ label, required, hint, children }) => (
   <label
     className="grid gap-1"
     style={{
+      // 40px ~ 2 linhas de label; 18px de hint; depois o controle
       gridTemplateRows: "minmax(40px,auto) minmax(18px,auto) auto",
     }}
   >
@@ -21,7 +22,7 @@ const Field = ({ label, required, hint, children }) => (
   </label>
 );
 
-// Select corrigido p/ Chrome (altura e baseline)
+// Select com altura/baseline padronizadas (Chrome-safe)
 const SelectBase = ({ className = "", children, ...props }) => (
   <div className="relative">
     <select
@@ -45,7 +46,7 @@ const SelectBase = ({ className = "", children, ...props }) => (
   </div>
 );
 
-// Classe padrão para inputs (casar com SelectBase)
+// Inputs com a mesma altura/baseline do SelectBase
 const inputClass =
   "w-full h-10 rounded-lg border pl-3 pr-3 py-0 leading-[38px] pt-px";
 
@@ -89,18 +90,22 @@ const AvisosSeguranca = () => (
 );
 
 /* =========================================================
-   Home
+   Home (original com logo + nome)
    ========================================================= */
 function Home() {
   return (
     <section className="space-y-6">
-      <Card className="space-y-4">
-        <h1 className="text-2xl font-bold">Linha Ética Venture</h1>
-        <p className="text-slate-600">
-          Use este canal para registrar denúncias com segurança. Você pode permanecer anônimo
-          ou deixar um contato para retorno.
+      <Card className="space-y-6 text-center">
+        <div className="flex flex-col items-center gap-3">
+          {/* Coloque o arquivo em public/logo-venture.png ou ajuste o src abaixo */}
+          <img src="/logo-venture.png" alt="Venture" className="h-12 object-contain" />
+          <h1 className="text-2xl font-bold">Venture — Linha Ética</h1>
+        </div>
+        <p className="text-slate-600 max-w-2xl mx-auto">
+          Canal confidencial para registro de denúncias. Você pode permanecer anônimo
+          ou informar um contato para retorno.
         </p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 justify-center">
           <a href="#/report" className="px-4 py-2 rounded-lg bg-emerald-600 text-white">Registrar denúncia</a>
           <a href="#/status" className="px-4 py-2 rounded-lg border">Acompanhar</a>
         </div>
@@ -111,19 +116,15 @@ function Home() {
 }
 
 /* =========================================================
-   Report (5 etapas)
+   Report (5 etapas) — Etapa 2 com UMA data obrigatória
    ========================================================= */
 function Report() {
   const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
 
-  // ETAPA 2 — datas obrigatórias
-  const [modoData, setModoData] = useState("unico"); // "unico" | "periodo"
-  const [dataUnica, setDataUnica] = useState("");    // yyyy-mm-dd
-  const [dataIni, setDataIni] = useState("");        // yyyy-mm-dd
-  const [dataFim, setDataFim] = useState("");        // yyyy-mm-dd
-
+  // ETAPA 2 — data única obrigatória
+  const [dataUnica, setDataUnica] = useState(""); // yyyy-mm-dd
   const [periodicidade, setPeriodicidade] = useState("único");
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -137,7 +138,7 @@ function Report() {
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
-  // Validações de data
+  // Validação de data (não aceita futuro)
   const isValidISODate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
   const isFuture = (s) => {
     if (!isValidISODate(s)) return false;
@@ -146,40 +147,21 @@ function Report() {
     d.setHours(0,0,0,0); today.setHours(0,0,0,0);
     return d > today;
   };
-
-  const dateErrors = (() => {
-    const errs = {};
-    if (modoData === "unico") {
-      if (!dataUnica) errs.unica = "Informe a data do ocorrido.";
-      else if (!isValidISODate(dataUnica)) errs.unica = "Data inválida.";
-      else if (isFuture(dataUnica)) errs.unica = "A data não pode estar no futuro.";
-    } else {
-      if (!dataIni) errs.ini = "Informe a data inicial.";
-      else if (!isValidISODate(dataIni)) errs.ini = "Data inicial inválida.";
-      else if (isFuture(dataIni)) errs.ini = "A data inicial não pode estar no futuro.";
-
-      if (!dataFim) errs.fim = "Informe a data final.";
-      else if (!isValidISODate(dataFim)) errs.fim = "Data final inválida.";
-      else if (isFuture(dataFim)) errs.fim = "A data final não pode estar no futuro.";
-
-      if (!errs.ini && !errs.fim) {
-        if (new Date(dataIni) > new Date(dataFim)) errs.range = "A data final deve ser igual ou posterior à inicial.";
-      }
-    }
-    return errs;
-  })();
-
-  const canDates = modoData === "unico"
-    ? !dateErrors.unica
-    : !dateErrors.ini && !dateErrors.fim && !dateErrors.range;
+  const dateError = !dataUnica
+    ? "Informe a data do ocorrido."
+    : !isValidISODate(dataUnica)
+      ? "Data inválida."
+      : isFuture(dataUnica)
+        ? "A data não pode estar no futuro."
+        : "";
 
   const canNext1 = !!unidade && !!categoria;
-  const canNext2 = descricao.trim().length >= 100 && !!onde && canDates;
+  const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
   const canSubmit = canNext1 && canNext2;
 
   const onSubmit = () => {
     if (!canSubmit) {
-      alert("Preencha os campos obrigatórios (datas válidas, onde e descrição ≥ 100).");
+      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
       return;
     }
     const casos = loadCasos();
@@ -190,9 +172,7 @@ function Report() {
       unidade,
       categoria,
       perguntas: {
-        periodo: modoData === "unico"
-          ? { tipo: "unico", data: dataUnica }
-          : { tipo: "periodo", inicio: dataIni, fim: dataFim },
+        periodo: { tipo: "unico", data: dataUnica },
         periodicidade,
         onde,
         valorFinanceiro,
@@ -277,74 +257,21 @@ function Report() {
           </div>
         )}
 
-        {/* ETAPA 2 */}
+        {/* ETAPA 2 (data única obrigatória) */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-12 gap-4 items-start">
-              {/* Quando aconteceu? (data obrigatória) */}
+              {/* Quando aconteceu? */}
               <div className="md:col-span-4">
-                <Field label="Quando aconteceu? *" hint="Selecione data única ou período">
-                  <div className="flex items-center gap-4 mb-2 text-sm">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        checked={modoData === "unico"}
-                        onChange={() => setModoData("unico")}
-                      />
-                      Evento único
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        checked={modoData === "periodo"}
-                        onChange={() => setModoData("periodo")}
-                      />
-                      Período
-                    </label>
-                  </div>
-
-                  {modoData === "unico" ? (
-                    <>
-                      <input
-                        type="date"
-                        className={inputClass}
-                        value={dataUnica}
-                        onChange={(e) => setDataUnica(e.target.value)}
-                      />
-                      {dateErrors.unica && (
-                        <div className="text-xs text-rose-600 mt-1">{dateErrors.unica}</div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-slate-500">Início</label>
-                        <input
-                          type="date"
-                          className={inputClass}
-                          value={dataIni}
-                          onChange={(e) => setDataIni(e.target.value)}
-                        />
-                        {dateErrors.ini && (
-                          <div className="text-xs text-rose-600 mt-1">{dateErrors.ini}</div>
-                        )}
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500">Fim</label>
-                        <input
-                          type="date"
-                          className={inputClass}
-                          value={dataFim}
-                          onChange={(e) => setDataFim(e.target.value)}
-                        />
-                        {dateErrors.fim && (
-                          <div className="text-xs text-rose-600 mt-1">{dateErrors.fim}</div>
-                        )}
-                      </div>
-                      {dateErrors.range && (
-                        <div className="col-span-2 text-xs text-rose-600">{dateErrors.range}</div>
-                      )}
-                    </div>
+                <Field label="Quando aconteceu? *" hint="Selecione a data do ocorrido">
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={dataUnica}
+                    onChange={(e) => setDataUnica(e.target.value)}
+                  />
+                  {dateError && (
+                    <div className="text-xs text-rose-600 mt-1">{dateError}</div>
                   )}
                 </Field>
               </div>

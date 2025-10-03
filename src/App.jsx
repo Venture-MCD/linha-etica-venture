@@ -94,23 +94,48 @@ const AvisosSeguranca = () => (
    ========================================================= */
 function Home() {
   return (
-    <section className="space-y-6">
-      <Card className="space-y-6 text-center">
-        <div className="flex flex-col items-center gap-3">
-          {/* Coloque o arquivo em public/logo-venture.png ou ajuste o src abaixo */}
-          <img src="/logo-venture.png" alt="Venture" className="h-12 object-contain" />
-          <h1 className="text-2xl font-bold">Venture — Linha Ética</h1>
-        </div>
-        <p className="text-slate-600 max-w-2xl mx-auto">
-          Canal confidencial para registro de denúncias. Você pode permanecer anônimo
-          ou informar um contato para retorno.
-        </p>
-        <div className="flex gap-3 justify-center">
-          <a href="#/report" className="px-4 py-2 rounded-lg bg-emerald-600 text-white">Registrar denúncia</a>
-          <a href="#/status" className="px-4 py-2 rounded-lg border">Acompanhar</a>
+    <section id="home" className="space-y-6">
+      <SectionTitle icon={ShieldAlert} title="Bem-vindo à Linha Ética" subtitle="Canal independente para relatos de má conduta, riscos e violações." />
+      <div className="grid md:grid-cols-3 gap-4">
+        <Card>
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><FileText /></div>
+            <div>
+              <h3 className="font-semibold">Registrar denúncia</h3>
+              <p className="text-sm text-slate-600">Envie um relato anônimo ou identificado. Gere um protocolo para acompanhar.</p>
+              <a href="#report" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">Iniciar <Send size={14} /></a>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><Search /></div>
+            <div>
+              <h3 className="font-semibold">Acompanhar status</h3>
+              <p className="text-sm text-slate-600">Use seu protocolo para ver andamento e interagir com o time responsável.</p>
+              <a href="#status" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">Acompanhar <Search size={14} /></a>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><HelpCircle /></div>
+            <div>
+              <h3 className="font-semibold">FAQ / Política</h3>
+              <p className="text-sm text-slate-600">Entenda como protegemos sua identidade e tratamos seus dados (LGPD).</p>
+              <a href="#faq" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">Ver perguntas <HelpCircle size={14} /></a>
+            </div>
+          </div>
+        </Card>
+      </div>
+      <Card>
+        <div className="grid md:grid-cols-4 gap-4">
+          <Stat label="Unidades" value="10" />
+          <Stat label="Tempo médio de abertura" value="2 min" />
+          <Stat label="Protocolo gerado" value="Automático" />
+          <Stat label="Custo" value="Hospedagem estática" />
         </div>
       </Card>
-      <AvisosSeguranca />
     </section>
   );
 }

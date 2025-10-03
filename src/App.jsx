@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 
 /* =========================================================
@@ -21,7 +21,7 @@ const Field = ({ label, required, hint, children }) => (
   </label>
 );
 
-// Select corrigido p/ Chrome
+// Select corrigido p/ Chrome (altura e baseline)
 const SelectBase = ({ className = "", children, ...props }) => (
   <div className="relative">
     <select
@@ -45,11 +45,11 @@ const SelectBase = ({ className = "", children, ...props }) => (
   </div>
 );
 
-// Inputs também padronizados (use essa classe sempre)
+// Classe padrão para inputs (casar com SelectBase)
 const inputClass =
   "w-full h-10 rounded-lg border pl-3 pr-3 py-0 leading-[38px] pt-px";
 
-/* Card + título */
+// UI básica
 const Card = ({ className, children }) => (
   <div className={`rounded-xl border p-6 bg-white shadow ${className || ""}`}>{children}</div>
 );
@@ -64,29 +64,17 @@ const SectionTitle = ({ icon: Icon, title, subtitle }) => (
   </div>
 );
 
-/* Mock FilePicker */
-const FilePicker = ({ files, setFiles }) => {
-  const onChange = (e) => {
-    const list = Array.from(e.target.files || []).map((f) => ({ name: f.name, size: f.size }));
-    setFiles(list);
-  };
-  return (
-    <div className="space-y-2">
-      <input type="file" multiple onChange={onChange} />
-      {!!files?.length && (
-        <ul className="text-sm text-slate-600 list-disc pl-5">
-          {files.map((f, i) => (
-            <li key={i}>
-              {f.name} ({Math.round((f.size || 0) / 1024)} KB)
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
+const Nav = () => (
+  <nav className="flex gap-3 mb-4">
+    <a href="#/" className="text-sm text-emerald-700 hover:underline">Home</a>
+    <a href="#/report" className="text-sm text-emerald-700 hover:underline">Registrar denúncia</a>
+    <a href="#/status" className="text-sm text-emerald-700 hover:underline">Acompanhar</a>
+  </nav>
+);
 
-/* Dados */
+/* =========================================================
+   Dados/mocks
+   ========================================================= */
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
 const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
 
@@ -101,37 +89,140 @@ const AvisosSeguranca = () => (
 );
 
 /* =========================================================
-   Form principal
+   Home
+   ========================================================= */
+function Home() {
+  return (
+    <section className="space-y-6">
+      <Card className="space-y-4">
+        <h1 className="text-2xl font-bold">Linha Ética Venture</h1>
+        <p className="text-slate-600">
+          Use este canal para registrar denúncias com segurança. Você pode permanecer anônimo
+          ou deixar um contato para retorno.
+        </p>
+        <div className="flex gap-3">
+          <a href="#/report" className="px-4 py-2 rounded-lg bg-emerald-600 text-white">Registrar denúncia</a>
+          <a href="#/status" className="px-4 py-2 rounded-lg border">Acompanhar</a>
+        </div>
+      </Card>
+      <AvisosSeguranca />
+    </section>
+  );
+}
+
+/* =========================================================
+   Report (5 etapas)
    ========================================================= */
 function Report() {
   const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [quando, setQuando] = useState("");
+
+  // ETAPA 2 — datas obrigatórias
+  const [modoData, setModoData] = useState("unico"); // "unico" | "periodo"
+  const [dataUnica, setDataUnica] = useState("");    // yyyy-mm-dd
+  const [dataIni, setDataIni] = useState("");        // yyyy-mm-dd
+  const [dataFim, setDataFim] = useState("");        // yyyy-mm-dd
+
   const [periodicidade, setPeriodicidade] = useState("único");
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
+
   const [valorFinanceiro, setValorFinanceiro] = useState("");
   const [foiReportado, setFoiReportado] = useState("nao");
   const [paraQuem, setParaQuem] = useState("");
+
   const [files, setFiles] = useState([]);
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
+  // Validações de data
+  const isValidISODate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+  const isFuture = (s) => {
+    if (!isValidISODate(s)) return false;
+    const d = new Date(s);
+    const today = new Date();
+    d.setHours(0,0,0,0); today.setHours(0,0,0,0);
+    return d > today;
+  };
+
+  const dateErrors = (() => {
+    const errs = {};
+    if (modoData === "unico") {
+      if (!dataUnica) errs.unica = "Informe a data do ocorrido.";
+      else if (!isValidISODate(dataUnica)) errs.unica = "Data inválida.";
+      else if (isFuture(dataUnica)) errs.unica = "A data não pode estar no futuro.";
+    } else {
+      if (!dataIni) errs.ini = "Informe a data inicial.";
+      else if (!isValidISODate(dataIni)) errs.ini = "Data inicial inválida.";
+      else if (isFuture(dataIni)) errs.ini = "A data inicial não pode estar no futuro.";
+
+      if (!dataFim) errs.fim = "Informe a data final.";
+      else if (!isValidISODate(dataFim)) errs.fim = "Data final inválida.";
+      else if (isFuture(dataFim)) errs.fim = "A data final não pode estar no futuro.";
+
+      if (!errs.ini && !errs.fim) {
+        if (new Date(dataIni) > new Date(dataFim)) errs.range = "A data final deve ser igual ou posterior à inicial.";
+      }
+    }
+    return errs;
+  })();
+
+  const canDates = modoData === "unico"
+    ? !dateErrors.unica
+    : !dateErrors.ini && !dateErrors.fim && !dateErrors.range;
+
   const canNext1 = !!unidade && !!categoria;
-  const canNext2 = descricao.trim().length >= 100 && !!onde && !!quando;
+  const canNext2 = descricao.trim().length >= 100 && !!onde && canDates;
   const canSubmit = canNext1 && canNext2;
 
   const onSubmit = () => {
     if (!canSubmit) {
-      alert("Preencha os campos obrigatórios antes de enviar.");
+      alert("Preencha os campos obrigatórios (datas válidas, onde e descrição ≥ 100).");
       return;
     }
     const casos = loadCasos();
     const protocolo = genProtocolo();
-    saveCasos([{ protocolo, unidade, categoria, quando, periodicidade, onde, descricao }, ...casos]);
+    const novo = {
+      protocolo,
+      createdAt: new Date().toISOString(),
+      unidade,
+      categoria,
+      perguntas: {
+        periodo: modoData === "unico"
+          ? { tipo: "unico", data: dataUnica }
+          : { tipo: "periodo", inicio: dataIni, fim: dataFim },
+        periodicidade,
+        onde,
+        valorFinanceiro,
+        foiReportado,
+        paraQuem
+      },
+      descricao: descricao.trim(),
+      anonimo,
+      contato: anonimo ? null : { ...contato, prefer },
+      anexos: files,
+      status: "Recebido",
+    };
+    saveCasos([novo, ...casos]);
+    window.location.hash = `#/status?proto=${protocolo}`;
     alert(`Denúncia registrada. Protocolo: ${protocolo}`);
+  };
+
+  const StepChip = ({ n }) => {
+    const active = step === n;
+    return (
+      <div
+        className={
+          active
+            ? "px-2 py-1 rounded-full border bg-emerald-600 text-white border-emerald-700"
+            : "px-2 py-1 rounded-full border bg-white"
+        }
+      >
+        Etapa {n}
+      </div>
+    );
   };
 
   return (
@@ -142,45 +233,123 @@ function Report() {
         subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
       />
       <Card className="space-y-5">
+        {/* Stepper */}
+        <div className="flex items-center gap-2 text-xs">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <StepChip key={n} n={n} />
+          ))}
+        </div>
+
+        {/* ETAPA 1 */}
         {step === 1 && (
-          <div className="grid md:grid-cols-2 gap-4 items-start">
-            <Field label="Unidade *" hint=" ">
-              <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
-                {UNIDADES.map((u) => (
-                  <option key={u}>{u}</option>
-                ))}
-              </SelectBase>
-            </Field>
-            <Field label="Categoria *" hint=" ">
-              <SelectBase value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-                {CATEGORIAS.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </SelectBase>
-            </Field>
-            <button
-              onClick={() => setStep(2)}
-              disabled={!canNext1}
-              className="col-span-2 px-4 py-2 rounded-lg bg-emerald-600 text-white mt-4"
-            >
-              Próxima
-            </button>
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4 items-start">
+              <Field label="Unidade *" hint=" ">
+                <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+                  {UNIDADES.map((u) => (
+                    <option key={u}>{u}</option>
+                  ))}
+                </SelectBase>
+              </Field>
+              <Field label="Categoria *" hint=" ">
+                <SelectBase value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                  {CATEGORIAS.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </SelectBase>
+              </Field>
+            </div>
+
+            <div className="flex justify-between">
+              <a href="#/" className="px-3 py-2 rounded-lg border">Home</a>
+              <button
+                disabled={!canNext1}
+                onClick={() => setStep(2)}
+                className={
+                  canNext1
+                    ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                    : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
+                }
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         )}
 
+        {/* ETAPA 2 */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-12 gap-4 items-start">
+              {/* Quando aconteceu? (data obrigatória) */}
               <div className="md:col-span-4">
-                <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
-                  <input
-                    className={inputClass}
-                    placeholder="Ex.: 15/09/2025 ou Ago-Out/2025"
-                    value={quando}
-                    onChange={(e) => setQuando(e.target.value)}
-                  />
+                <Field label="Quando aconteceu? *" hint="Selecione data única ou período">
+                  <div className="flex items-center gap-4 mb-2 text-sm">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={modoData === "unico"}
+                        onChange={() => setModoData("unico")}
+                      />
+                      Evento único
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        checked={modoData === "periodo"}
+                        onChange={() => setModoData("periodo")}
+                      />
+                      Período
+                    </label>
+                  </div>
+
+                  {modoData === "unico" ? (
+                    <>
+                      <input
+                        type="date"
+                        className={inputClass}
+                        value={dataUnica}
+                        onChange={(e) => setDataUnica(e.target.value)}
+                      />
+                      {dateErrors.unica && (
+                        <div className="text-xs text-rose-600 mt-1">{dateErrors.unica}</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-slate-500">Início</label>
+                        <input
+                          type="date"
+                          className={inputClass}
+                          value={dataIni}
+                          onChange={(e) => setDataIni(e.target.value)}
+                        />
+                        {dateErrors.ini && (
+                          <div className="text-xs text-rose-600 mt-1">{dateErrors.ini}</div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500">Fim</label>
+                        <input
+                          type="date"
+                          className={inputClass}
+                          value={dataFim}
+                          onChange={(e) => setDataFim(e.target.value)}
+                        />
+                        {dateErrors.fim && (
+                          <div className="text-xs text-rose-600 mt-1">{dateErrors.fim}</div>
+                        )}
+                      </div>
+                      {dateErrors.range && (
+                        <div className="col-span-2 text-xs text-rose-600">{dateErrors.range}</div>
+                      )}
+                    </div>
+                  )}
                 </Field>
               </div>
+
+              {/* Recorrência */}
               <div className="md:col-span-4">
                 <Field label="Recorrência" hint=" ">
                   <SelectBase
@@ -193,6 +362,8 @@ function Report() {
                   </SelectBase>
                 </Field>
               </div>
+
+              {/* Onde ocorreu */}
               <div className="md:col-span-4">
                 <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
                   <input
@@ -204,6 +375,8 @@ function Report() {
                 </Field>
               </div>
             </div>
+
+            {/* Descrição + contador */}
             <Field
               label="Descreva detalhadamente o ocorrido *"
               hint="O que aconteceu? Quem estava envolvido? Há evidências?"
@@ -212,63 +385,136 @@ function Report() {
                 className="w-full rounded-lg border p-3 min-h-[180px]"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
+                placeholder="Conte os fatos com o máximo de detalhes possíveis…"
               />
-            </Field>
-            <button
-              onClick={() => setStep(3)}
-              disabled={!canNext2}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white"
-            >
-              Próxima
-            </button>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="grid md:grid-cols-2 gap-4 items-start">
-            <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
-              <input
-                className={inputClass}
-                placeholder="Ex.: ~R$ 5.000"
-                value={valorFinanceiro}
-                onChange={(e) => setValorFinanceiro(e.target.value)}
-              />
-            </Field>
-            <Field label="Você já reportou isso internamente?" hint=" ">
-              <SelectBase
-                value={foiReportado}
-                onChange={(e) => setFoiReportado(e.target.value)}
+              <div
+                className={
+                  descricao.trim().length < 100
+                    ? "text-xs mt-1 text-rose-600"
+                    : "text-xs mt-1 text-slate-500"
+                }
               >
-                <option value="nao">Não</option>
-                <option value="sim">Sim</option>
-              </SelectBase>
+                {descricao.trim().length} / 100
+              </div>
             </Field>
-            <button
-              onClick={() => setStep(4)}
-              className="col-span-2 px-4 py-2 rounded-lg bg-emerald-600 text-white mt-4"
-            >
-              Próxima
-            </button>
+
+            <div className="flex justify-between">
+              <button onClick={() => setStep(1)} className="px-3 py-2 rounded-lg border">
+                Voltar
+              </button>
+              <button
+                disabled={!canNext2}
+                onClick={() => setStep(3)}
+                className={
+                  canNext2
+                    ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                    : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
+                }
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         )}
 
+        {/* ETAPA 3 */}
+        {step === 3 && (
+          <div className="space-y-6">
+            <div className="grid md:grid-cols-12 gap-4 items-start">
+              <div className="md:col-span-6">
+                <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+                  <input
+                    className={inputClass}
+                    placeholder="Ex.: ~R$ 5.000"
+                    value={valorFinanceiro}
+                    onChange={(e) => setValorFinanceiro(e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              <div className="md:col-span-6">
+                <Field label="Você já reportou isso internamente?" hint=" ">
+                  <SelectBase
+                    value={foiReportado}
+                    onChange={(e) => setFoiReportado(e.target.value)}
+                  >
+                    <option value="nao">Não</option>
+                    <option value="sim">Sim</option>
+                  </SelectBase>
+                </Field>
+              </div>
+
+              {foiReportado === "sim" && (
+                <div className="md:col-span-12">
+                  <Field label="Para quem? (opcional)" hint="Departamento, nome ou canal">
+                    <input
+                      className={inputClass}
+                      value={paraQuem}
+                      onChange={(e) => setParaQuem(e.target.value)}
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between">
+              <button onClick={() => setStep(2)} className="px-3 py-2 rounded-lg border">
+                Voltar
+              </button>
+              <button
+                onClick={() => setStep(4)}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ETAPA 4 */}
         {step === 4 && (
           <div className="space-y-4">
             <Field
               label="Anexos (opcional)"
-              hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis."
+              hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar."
             >
-              <FilePicker files={files} setFiles={setFiles} />
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  const list = Array.from(e.target.files || []).map((f) => ({
+                    name: f.name,
+                    size: f.size,
+                  }));
+                  setFiles(list);
+                }}
+              />
+              {!!files.length && (
+                <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
+                  {files.map((f, i) => (
+                    <li key={i}>
+                      {f.name} ({Math.round((f.size || 0) / 1024)} KB)
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Field>
-            <button
-              onClick={() => setStep(5)}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white"
-            >
-              Próxima
-            </button>
+
+            <div className="flex justify-between">
+              <button onClick={() => setStep(3)} className="px-3 py-2 rounded-lg border">
+                Voltar
+              </button>
+              <button
+                onClick={() => setStep(5)}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         )}
 
+        {/* ETAPA 5 */}
         {step === 5 && (
           <div className="space-y-4">
             <Field label="Anonimato" hint=" ">
@@ -281,48 +527,67 @@ function Report() {
                 <span className="text-sm">Quero permanecer anônimo</span>
               </label>
             </Field>
+
             {!anonimo && (
-              <div className="grid md:grid-cols-2 gap-4 items-start">
-                <Field label="Nome" hint=" ">
-                  <input
-                    className={inputClass}
-                    value={contato.nome}
-                    onChange={(e) => setContato({ ...contato, nome: e.target.value })}
-                  />
-                </Field>
-                <Field label="Email" hint=" ">
-                  <input
-                    type="email"
-                    className={inputClass}
-                    value={contato.email}
-                    onChange={(e) => setContato({ ...contato, email: e.target.value })}
-                  />
-                </Field>
-                <Field label="Telefone" hint=" ">
-                  <input
-                    className={inputClass}
-                    value={contato.telefone}
-                    onChange={(e) => setContato({ ...contato, telefone: e.target.value })}
-                  />
-                </Field>
-                <Field label="Preferência de contato" hint=" ">
-                  <SelectBase
-                    value={prefer}
-                    onChange={(e) => setPrefer(e.target.value)}
-                  >
-                    <option value="email">Email</option>
-                    <option value="telefone">Telefone</option>
-                  </SelectBase>
-                </Field>
+              <div className="grid md:grid-cols-12 gap-4 items-start">
+                <div className="md:col-span-4">
+                  <Field label="Nome" hint=" ">
+                    <input
+                      className={inputClass}
+                      value={contato.nome}
+                      onChange={(e) => setContato({ ...contato, nome: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Email" hint=" ">
+                    <input
+                      type="email"
+                      className={inputClass}
+                      value={contato.email}
+                      onChange={(e) => setContato({ ...contato, email: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Telefone" hint=" ">
+                    <input
+                      className={inputClass}
+                      value={contato.telefone}
+                      onChange={(e) => setContato({ ...contato, telefone: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Preferência de contato" hint=" ">
+                    <SelectBase
+                      value={prefer}
+                      onChange={(e) => setPrefer(e.target.value)}
+                    >
+                      <option value="email">Email</option>
+                      <option value="telefone">Telefone</option>
+                    </SelectBase>
+                  </Field>
+                </div>
               </div>
             )}
-            <button
-              onClick={onSubmit}
-              disabled={!canSubmit}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white"
-            >
-              Enviar denúncia
-            </button>
+
+            <div className="flex justify-between">
+              <button onClick={() => setStep(4)} className="px-3 py-2 rounded-lg border">
+                Voltar
+              </button>
+              <button
+                onClick={onSubmit}
+                disabled={!canSubmit}
+                className={
+                  canSubmit
+                    ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
+                    : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
+                }
+              >
+                Enviar denúncia
+              </button>
+            </div>
           </div>
         )}
       </Card>
@@ -331,10 +596,59 @@ function Report() {
   );
 }
 
-export default function App() {
+/* =========================================================
+   Status (mock)
+   ========================================================= */
+function Status() {
+  const [proto, setProto] = useState("");
+  const onCheck = () => {
+    const casos = loadCasos();
+    const achou = casos.find((c) => c.protocolo === proto.trim());
+    alert(achou ? `Status: ${achou.status}` : "Protocolo não encontrado.");
+  };
+  return (
+    <section className="space-y-6">
+      <Card className="space-y-4">
+        <h3 className="text-lg font-semibold">Acompanhar denúncia</h3>
+        <Field label="Protocolo" hint="Digite o código recebido ao enviar a denúncia">
+          <input className={inputClass} value={proto} onChange={(e) => setProto(e.target.value)} />
+        </Field>
+        <div className="flex gap-3">
+          <button onClick={onCheck} className="px-4 py-2 rounded-lg bg-emerald-600 text-white">
+            Consultar
+          </button>
+          <a href="#/" className="px-4 py-2 rounded-lg border">Voltar para Home</a>
+        </div>
+      </Card>
+      <AvisosSeguranca />
+    </section>
+  );
+}
+
+/* =========================================================
+   Router por hash
+   ========================================================= */
+function AppRouter() {
+  const [route, setRoute] = useState(window.location.hash || "#/");
+
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash || "#/");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   return (
     <main className="max-w-5xl mx-auto p-4 md:p-6">
-      <Report />
+      <Nav />
+      {route.startsWith("#/report") ? (
+        <Report />
+      ) : route.startsWith("#/status") ? (
+        <Status />
+      ) : (
+        <Home />
+      )}
     </main>
   );
 }
+
+export default AppRouter;

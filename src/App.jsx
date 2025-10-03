@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FileText, Search, HelpCircle, Send, ShieldAlert } from "lucide-react";
-import ventureLogo from "./logo-venture.jpeg"; // <-- coloque o arquivo em src/logo-venture.jpeg
+import ventureLogo from "./logo-venture.jpeg"; // arquivo em src/logo-venture.jpeg
 
 /* =========================================================
    Helpers visuais
@@ -103,16 +103,11 @@ const AvisosSeguranca = () => (
 );
 
 /* =========================================================
-   HOME (como você queria) + cabeçalho curto com logo
+   HOME (sem logo duplicado)
    ========================================================= */
 function Home() {
   return (
     <section id="home" className="space-y-6">
-      <div className="flex items-center gap-2">
-        <img src={ventureLogo} alt="Venture" className="h-8 w-auto object-contain" />
-        <h1 className="text-xl font-bold">Venture</h1>
-      </div>
-
       <SectionTitle
         icon={ShieldAlert}
         title="Bem-vindo à Linha Ética"

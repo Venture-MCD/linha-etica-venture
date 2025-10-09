@@ -642,14 +642,13 @@ function FAQ() {
   );
 }
 
-/* ==================== ADMIN protegido + mobile ==================== */
-const ADMIN_PASS = "venture2025";
-
+/* ==================== ADMIN (painel) ==================== */
 function AdminPanel() {
   const [q, setQ] = useState("");
   const [casos, setCasos] = useState(loadCasos());
   const [sel, setSel] = useState(null);
 
+  // Atualiza quando voltar para a aba
   useEffect(() => {
     const onFocus = () => setCasos(loadCasos());
     window.addEventListener("focus", onFocus);
@@ -663,20 +662,40 @@ function AdminPanel() {
       c.protocolo?.toLowerCase().includes(s) ||
       c.unidade?.toLowerCase().includes(s) ||
       c.categoria?.toLowerCase().includes(s) ||
+      c.perguntas?.onde?.toLowerCase?.().includes(s) ||
       c.descricao?.toLowerCase().includes(s)
     );
   };
 
+  const lista = casos.filter(filtra);
+
   const exportCsv = () => {
     const rows = [
-      ["protocolo","createdAt","unidade","categoria","onde","data","periodicidade","impactoFinanceiro","foiReportado","paraQuem","anonimo","contato","status","descricao","qtdAnexos"]
+      [
+        "protocolo",
+        "createdAt",
+        "unidade",
+        "categoria",
+        "onde",
+        "data",
+        "periodicidade",
+        "impactoFinanceiro",
+        "foiReportado",
+        "paraQuem",
+        "anonimo",
+        "contato",
+        "status",
+        "descricao",
+        "qtdAnexos",
+        "links",
+      ],
     ];
-    for (const c of casos.filter(filtra)) {
+    for (const c of lista) {
       rows.push([
-        c.protocolo,
-        c.createdAt,
-        c.unidade,
-        c.categoria,
+        c.protocolo || "",
+        c.createdAt || "",
+        c.unidade || "",
+        c.categoria || "",
         c.perguntas?.onde || "",
         c.perguntas?.periodo?.data || "",
         c.perguntas?.periodicidade || "",
@@ -687,14 +706,22 @@ function AdminPanel() {
         c.anonimo ? "" : JSON.stringify(c.contato || {}),
         c.status || "",
         (c.descricao || "").replace(/\n/g, " "),
-        (c.anexos?.length || 0),
+        (c.anexos?.length || 0).toString(),
+        (c.anexos || [])
+          .map((a) => a.url)
+          .filter(Boolean)
+          .join(" | "),
       ]);
     }
-    const csv = rows.map(r => r.map(v => `"${String(v || "").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const csv = rows
+      .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "denuncias.csv"; a.click();
+    a.href = url;
+    a.download = "denuncias.csv";
+    a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -705,7 +732,15 @@ function AdminPanel() {
     setSel(null);
   };
 
-  const lista = casos.filter(filtra);
+  const abrirAnexosSelecionado = () => {
+    if (!sel?.anexos?.length) return;
+    const links = sel.anexos.filter((f) => !!f.url);
+    if (!links.length) {
+      alert("Este registro não possui links (provavelmente é anterior ao upload em nuvem).");
+      return;
+    }
+    links.forEach((f) => window.open(f.url, "_blank", "noopener,noreferrer"));
+  };
 
   return (
     <section className="space-y-4 md:space-y-6">
@@ -713,8 +748,12 @@ function AdminPanel() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h3 className="text-lg font-semibold">Painel (local)</h3>
           <div className="flex flex-col sm:flex-row gap-2">
-            <button onClick={exportCsv} className={btnOutline}>Exportar CSV</button>
-            <button onClick={limparTudo} className={`${btnOutline} text-rose-600`}>Limpar tudo</button>
+            <button onClick={exportCsv} className={btnOutline}>
+              Exportar CSV
+            </button>
+            <button onClick={limparTudo} className={`${btnOutline} text-rose-600`}>
+              Limpar tudo
+            </button>
           </div>
         </div>
 
@@ -723,12 +762,14 @@ function AdminPanel() {
             className={inputClass}
             placeholder="Buscar por protocolo, unidade, categoria, descrição…"
             value={q}
-            onChange={e => setQ(e.target.value)}
+            onChange={(e) => setQ(e.target.value)}
           />
-          <a href="#/" className={btnOutline}>Home</a>
+          <a href="#/" className={btnOutline}>
+            Home
+          </a>
         </div>
 
-        {/* Lista mobile como cards */}
+        {/* Lista MOBILE */}
         <div className="grid md:hidden gap-3">
           {lista.length === 0 && (
             <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
@@ -740,6 +781,7 @@ function AdminPanel() {
               key={i}
               className="rounded-lg border p-3 bg-white"
               onClick={() => setSel(c)}
+              role="button"
             >
               <div className="flex justify-between gap-2">
                 <div className="font-mono text-sm">{c.protocolo}</div>
@@ -751,14 +793,15 @@ function AdminPanel() {
                 <span className="font-medium">{c.unidade}</span> • {c.categoria}
               </div>
               <div className="text-xs text-slate-600 mt-1">
-                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
+                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} •{" "}
+                {c.anonimo ? "Anônimo" : "Identificado"}
               </div>
               <div className="text-xs mt-1">Status: {c.status || "-"}</div>
             </div>
           ))}
         </div>
 
-        {/* Tabela desktop */}
+        {/* Tabela DESKTOP */}
         <div className="overflow-auto rounded-lg border hidden md:block">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left">
@@ -775,10 +818,18 @@ function AdminPanel() {
             </thead>
             <tbody>
               {lista.length === 0 && (
-                <tr><td colSpan={8} className="p-3 text-center text-slate-500">Sem registros.</td></tr>
+                <tr>
+                  <td colSpan={8} className="p-3 text-center text-slate-500">
+                    Sem registros.
+                  </td>
+                </tr>
               )}
               {lista.map((c, i) => (
-                <tr key={i} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSel(c)}>
+                <tr
+                  key={i}
+                  className="hover:bg-slate-50 cursor-pointer"
+                  onClick={() => setSel(c)}
+                >
                   <td className="p-2 border-b font-mono">{c.protocolo}</td>
                   <td className="p-2 border-b">{new Date(c.createdAt).toLocaleString()}</td>
                   <td className="p-2 border-b">{c.unidade}</td>
@@ -793,6 +844,7 @@ function AdminPanel() {
           </table>
         </div>
 
+        {/* Detalhes do selecionado */}
         {sel && (
           <div className="rounded-lg border p-3 bg-slate-50">
             <div className="flex items-start justify-between gap-3">
@@ -800,17 +852,57 @@ function AdminPanel() {
                 <div className="text-sm text-slate-500">Protocolo</div>
                 <div className="font-mono font-semibold">{sel.protocolo}</div>
               </div>
-              <button className="text-sm underline" onClick={()=>setSel(null)}>fechar</button>
+              <div className="flex items-center gap-2">
+                <button
+                  className={`${btnOutline} disabled:opacity-50`}
+                  onClick={abrirAnexosSelecionado}
+                  disabled={!(sel.anexos || []).some((a) => a.url)}
+                >
+                  Abrir anexos
+                </button>
+                <button className="text-sm underline" onClick={() => setSel(null)}>
+                  fechar
+                </button>
+              </div>
             </div>
+
             <div className="grid md:grid-cols-2 gap-3 mt-2">
-              <div><div className="text-xs text-slate-500">Unidade</div><div>{sel.unidade}</div></div>
-              <div><div className="text-xs text-slate-500">Categoria</div><div>{sel.categoria}</div></div>
-              <div><div className="text-xs text-slate-500">Onde</div><div>{sel.perguntas?.onde || "-"}</div></div>
-              <div><div className="text-xs text-slate-500">Quando</div><div>{sel.perguntas?.periodo?.data || "-"}</div></div>
-              <div><div className="text-xs text-slate-500">Recorrência</div><div>{sel.perguntas?.periodicidade || "-"}</div></div>
-              <div><div className="text-xs text-slate-500">Impacto financeiro</div><div>{sel.perguntas?.valorFinanceiro || "-"}</div></div>
-              <div><div className="text-xs text-slate-500">Reportado internamente</div><div>{sel.perguntas?.foiReportado === "sim" ? `Sim (${sel.perguntas?.paraQuem || "—"})` : "Não"}</div></div>
-              <div><div className="text-xs text-slate-500">Anonimato</div><div>{sel.anonimo ? "Sim" : "Não"}</div></div>
+              <div>
+                <div className="text-xs text-slate-500">Unidade</div>
+                <div>{sel.unidade}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Categoria</div>
+                <div>{sel.categoria}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Onde</div>
+                <div>{sel.perguntas?.onde || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Quando</div>
+                <div>{sel.perguntas?.periodo?.data || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Recorrência</div>
+                <div>{sel.perguntas?.periodicidade || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Impacto financeiro</div>
+                <div>{sel.perguntas?.valorFinanceiro || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Reportado internamente</div>
+                <div>
+                  {sel.perguntas?.foiReportado === "sim"
+                    ? `Sim (${sel.perguntas?.paraQuem || "—"})`
+                    : "Não"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Anonimato</div>
+                <div>{sel.anonimo ? "Sim" : "Não"}</div>
+              </div>
             </div>
 
             <div className="mt-3">
@@ -827,15 +919,28 @@ function AdminPanel() {
                   <ul className="list-disc pl-5">
                     {sel.anexos.map((f, i) => (
                       <li key={i}>
-                        {f.name}
-                        {typeof f.size === "number" ? ` (${Math.round(f.size / 1024)} KB)` : ""}
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 underline"
+                          >
+                            {f.name}
+                          </a>
+                        ) : (
+                          f.name
+                        )}
+                        {typeof f.size === "number"
+                          ? ` (${Math.round(f.size / 1024)} KB)`
+                          : ""}
                         {f.type ? ` — ${f.type}` : ""}
                       </li>
                     ))}
                   </ul>
                 )}
                 <div className="text-xs text-slate-500 mt-1">
-                  Obs.: Em protótipo, apenas nome/tamanho/tipo são armazenados (não o arquivo).
+                  Obs.: Registros antigos podem não ter link. Novos envios já exibem o link.
                 </div>
               </div>
             )}
@@ -846,6 +951,9 @@ function AdminPanel() {
     </section>
   );
 }
+
+/* ==================== ADMIN (proteção por senha) ==================== */
+const ADMIN_PASS = "Venture@4266"; // ajuste a sua senha aqui
 
 function AdminProtected() {
   const [ok, setOk] = useState(sessionStorage.getItem("admin_ok") === "1");
@@ -867,24 +975,36 @@ function AdminProtected() {
 
   return (
     <section className="space-y-4 md:space-y-6">
-      <SectionTitle icon={Lock} title="Acesso restrito" subtitle="Informe a senha para acessar o painel." />
+      <SectionTitle
+        icon={Lock}
+        title="Acesso restrito"
+        subtitle="Informe a senha para acessar o painel."
+      />
       <Card className="space-y-3 max-w-md">
         <form onSubmit={submit} className="space-y-3">
           <Field label="Senha" hint="Contato: compliance/ética">
-            <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
+            <input
+              type="password"
+              className={inputClass}
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+            />
           </Field>
           {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
-            <a href="#/" className={btnOutline}>Cancelar</a>
+            <a href="#/" className={btnOutline}>
+              Cancelar
+            </a>
           </div>
         </form>
-        <div className="text-xs text-slate-500">Dica: altere a constante <code>ADMIN_PASS</code> no código.</div>
+        <div className="text-xs text-slate-500">
+          Dica: altere a constante <code>ADMIN_PASS</code> no código.
+        </div>
       </Card>
     </section>
   );
 }
-
 /* ==================== Router ==================== */
 function AppRouter() {
   const [route, setRoute] = useState(window.location.hash || "#/");

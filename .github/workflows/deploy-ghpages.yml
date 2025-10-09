@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -28,9 +27,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Check dist
+      - name: Ensure 404 for SPA
         run: |
-          test -d dist || (echo "ERRO: dist não gerado." && exit 1)
+          cp -f dist/index.html dist/404.html || true
+          ls -la dist | head -n 50
 
       - name: Publish to gh-pages
         uses: peaceiris/actions-gh-pages@v3

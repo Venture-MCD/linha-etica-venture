@@ -1,3 +1,4 @@
+import { ensureAnonAuth, uploadFile } from "./firebase";
 import React, { useEffect, useState } from "react";
 import {
   FileText,
@@ -311,36 +312,67 @@ function Report() {
   const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
   const canSubmit = canNext1 && canNext2;
 
-  const onSubmit = () => {
-    if (!canSubmit) {
-      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
-      return;
+  const onSubmit = async () => {
+  if (!canSubmit) {
+    alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
+    return;
+  }
+
+  // Autenticação anônima (necessária para regras do Storage)
+  try {
+    await ensureAnonAuth();
+  } catch (e) {
+    console.error("Anon auth error:", e);
+    alert("Falha ao iniciar sessão anônima para enviar anexos. Tente novamente.");
+    return;
+  }
+
+  const protocolo = genProtocolo();
+
+  // Upload dos anexos (se houver)
+  let anexosSubidos = [];
+  if (files.length) {
+    try {
+      const uploaded = [];
+      for (const f of files) {
+        const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const path = `reports/${protocolo}/${safeName}`;
+        const url = await uploadFile(path, f);
+        uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+      }
+      anexosSubidos = uploaded;
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
+      anexosSubidos = [];
     }
-    const casos = loadCasos();
-    const protocolo = genProtocolo();
-    const novo = {
-      protocolo,
-      createdAt: new Date().toISOString(),
-      unidade,
-      categoria,
-      perguntas: {
-        periodo: { tipo: "unico", data: dataUnica },
-        periodicidade,
-        onde,
-        valorFinanceiro,
-        foiReportado,
-        paraQuem,
-      },
-      descricao: descricao.trim(),
-      anonimo,
-      contato: anonimo ? null : { ...contato, prefer },
-      anexos: files,
-      status: "Recebido",
-    };
-    saveCasos([novo, ...casos]);
-    window.location.hash = `#/status?proto=${protocolo}`;
-    alert(`Denúncia registrada. Protocolo: ${protocolo}`);
+  }
+
+  const casos = loadCasos();
+  const novo = {
+    protocolo,
+    createdAt: new Date().toISOString(),
+    unidade,
+    categoria,
+    perguntas: {
+      periodo: { tipo: "unico", data: dataUnica },
+      periodicidade,
+      onde,
+      valorFinanceiro,
+      foiReportado,
+      paraQuem,
+    },
+    descricao: descricao.trim(),
+    anonimo,
+    contato: anonimo ? null : { ...contato, prefer },
+    anexos: anexosSubidos, // << com url agora
+    status: "Recebido",
   };
+  saveCasos([novo, ...casos]);
+
+  window.location.hash = `#/status?proto=${protocolo}`;
+  alert(`Denúncia registrada. Protocolo: ${protocolo}`);
+};
 
   const StepChip = ({ n }) => {
     const active = step === n;
@@ -509,26 +541,23 @@ function Report() {
           <div className="space-y-4">
             <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
               <input
-                type="file"
-                multiple
-                onChange={(e) => {
-                  const list = Array.from(e.target.files || []).map((f) => ({
-                    name: f.name,
-                    size: f.size,
-                    type: f.type,
-                  }));
-                  setFiles(list);
-                }}
-              />
-              {!!files.length && (
-                <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
-                  {files.map((f, i) => (
-                    <li key={i}>
-                      {f.name} ({Math.round((f.size || 0) / 1024)} KB){f.type ? ` — ${f.type}` : ""}
-                    </li>
-                  ))}
-                </ul>
-              )}
+  type="file"
+  multiple
+  onChange={(e) => {
+    const list = Array.from(e.target.files || []);
+    const ok = list.filter((f) => f.size <= 8 * 1024 * 1024); // 8MB
+    const rejeitados = list.length - ok.length;
+    if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 8MB (${rejeitados}).`);
+    setFiles(ok); // << agora guarda File[]
+  }}
+/>
+{!!files.length && (
+  <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
+    {files.map((f, i) => (
+      <li key={i}>{f.name} ({Math.round(f.size/1024)} KB)</li>
+    ))}
+  </ul>
+)}
             </Field>
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
               <button onClick={() => setStep(3)} className={btnOutline}>Voltar</button>
@@ -911,39 +940,37 @@ function AdminPanel() {
             </div>
 
             {Array.isArray(sel.anexos) && (
-              <div className="mt-3">
-                <div className="text-xs text-slate-500">Anexos</div>
-                {sel.anexos.length === 0 ? (
-                  <div>-</div>
-                ) : (
-                  <ul className="list-disc pl-5">
-                    {sel.anexos.map((f, i) => (
-                      <li key={i}>
-                        {f.url ? (
-                          <a
-                            href={f.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-emerald-700 underline"
-                          >
-                            {f.name}
-                          </a>
-                        ) : (
-                          f.name
-                        )}
-                        {typeof f.size === "number"
-                          ? ` (${Math.round(f.size / 1024)} KB)`
-                          : ""}
-                        {f.type ? ` — ${f.type}` : ""}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="text-xs text-slate-500 mt-1">
-                  Obs.: Registros antigos podem não ter link. Novos envios já exibem o link.
-                </div>
-              </div>
+  <div className="mt-3">
+    <div className="text-xs text-slate-500">Anexos</div>
+    {sel.anexos.length === 0 ? (
+      <div>-</div>
+    ) : (
+      <ul className="list-disc pl-5">
+        {sel.anexos.map((f, i) => (
+          <li key={i}>
+            {f.url ? (
+              <a
+                href={f.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-700 underline"
+              >
+                {f.name}
+              </a>
+            ) : (
+              f.name
             )}
+            {typeof f.size === "number" ? ` (${Math.round(f.size / 1024)} KB)` : ""}
+            {f.type ? ` — ${f.type}` : ""}
+          </li>
+        ))}
+      </ul>
+    )}
+    <div className="text-xs text-slate-500 mt-1">
+      Observação: registros antigos podem não ter link. Novos envios já exibem o link.
+    </div>
+  </div>
+)}
           </div>
         )}
       </Card>

@@ -8,8 +8,15 @@ import {
   Lock,
   Menu,
   X,
+  Info,
+  CheckCircle2,
 } from "lucide-react";
 import ventureLogo from "./logo-venture.jpeg";
+
+/* ==================== Config & Consts ==================== */
+const POLICY_VERSION = "1.0";
+const POLICY_UPDATED = "09/10/2025"; // dd/mm/aaaa
+const CONSENT_KEY = "consent_ok";
 
 /* ==================== Helpers visuais (com alinhamento) ==================== */
 const Field = ({ label, required, hint, children }) => (
@@ -39,7 +46,6 @@ const SelectBase = ({ className = "", children, ...props }) => (
     >
       {children}
     </select>
-    {/* seta */}
     <svg
       aria-hidden="true"
       className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70"
@@ -99,9 +105,9 @@ const Nav = () => {
         </a>
         <div className="hidden md:flex gap-4">
           <a href="#/" className="text-sm text-emerald-700 hover:underline">Home</a>
-          <a href="#/report" className="text-sm text-emerald-700 hover:underline">Registrar denúncia</a>
           <a href="#/status" className="text-sm text-emerald-700 hover:underline">Acompanhar</a>
           <a href="#/faq" className="text-sm text-emerald-700 hover:underline">FAQ</a>
+          <a href="#/termos" className="text-sm text-emerald-700 hover:underline">Política de Uso</a>
         </div>
         <button
           className="md:hidden p-2 rounded-lg border"
@@ -114,16 +120,16 @@ const Nav = () => {
       {open && (
         <div className="mt-3 grid gap-2 md:hidden">
           <a href="#/" className="px-3 py-2 rounded-lg border">Home</a>
-          <a href="#/report" className="px-3 py-2 rounded-lg border">Registrar denúncia</a>
           <a href="#/status" className="px-3 py-2 rounded-lg border">Acompanhar</a>
           <a href="#/faq" className="px-3 py-2 rounded-lg border">FAQ</a>
+          <a href="#/termos" className="px-3 py-2 rounded-lg border">Política de Uso</a>
         </div>
       )}
     </nav>
   );
 };
 
-/* ==================== Dados mock ==================== */
+/* ==================== Dados mock & utils ==================== */
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
 const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
 const loadCasos = () => JSON.parse(localStorage.getItem("casos") || "[]");
@@ -137,6 +143,8 @@ const AvisosSeguranca = () => (
 
 /* ==================== HOME ==================== */
 function Home() {
+  // se já concordou antes, enviar direto para report ao clicar em Iniciar
+  const nextHref = sessionStorage.getItem(CONSENT_KEY) === "1" ? "#/report" : "#/termos";
   return (
     <section id="home" className="space-y-4 md:space-y-6">
       <SectionTitle
@@ -151,7 +159,7 @@ function Home() {
             <div>
               <h3 className="font-semibold">Registrar denúncia</h3>
               <p className="text-sm text-slate-600">Envie um relato anônimo ou identificado. Gere um protocolo para acompanhar.</p>
-              <a href="#/report" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
+              <a href={nextHref} className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Iniciar <Send size={14} />
               </a>
             </div>
@@ -197,7 +205,67 @@ function Home() {
   );
 }
 
-/* ==================== REPORT ==================== */
+/* ==================== POLÍTICA DE USO (Obrigatória) ==================== */
+function Termos() {
+  const [agree, setAgree] = useState(false);
+
+  const continuar = () => {
+    if (!agree) return;
+    sessionStorage.setItem(CONSENT_KEY, "1");
+    window.location.hash = "#/report";
+  };
+
+  return (
+    <section className="space-y-4 md:space-y-6">
+      <SectionTitle
+        icon={Info}
+        title="Política de Uso da Linha Ética"
+        subtitle={`Versão ${POLICY_VERSION} • Atualizado em ${POLICY_UPDATED}`}
+      />
+      <Card className="space-y-4">
+        <div className="text-sm text-slate-700 space-y-3 max-h-[55vh] overflow-auto pr-1">
+          <p><strong>Objetivo.</strong> Este canal foi criado para que colaboradores, terceiros e demais partes interessadas relatem, de boa-fé, suspeitas de irregularidades, condutas inadequadas, violações de políticas internas ou leis aplicáveis.</p>
+          <p><strong>Anonimato e Identificação.</strong> Você pode registrar a denúncia de forma anônima ou identificada. Ao optar por se identificar, seus dados de contato serão utilizados exclusivamente para retorno sobre o caso.</p>
+          <p><strong>Coleta e Tratamento de Dados (LGPD).</strong> Coletamos apenas as informações necessárias para apurar o fato: dados do relato, eventuais anexos (nome do arquivo, tamanho e tipo no protótipo), e, se fornecidos, dados de contato. O tratamento respeita os princípios da LGPD e a base legal aplicável (legítimo interesse e/ou exercício regular de direitos). Dados serão compartilhados somente com quem precisa conhecer para a apuração.</p>
+          <p><strong>Confidencialidade.</strong> O conteúdo do relato é confidencial e acessado exclusivamente por pessoas autorizadas. A empresa adota medidas para proteger a identidade do denunciante, na medida do possível.</p>
+          <p><strong>Boas-fé e Uso Responsável.</strong> É vedado o uso do canal para acusações sabidamente falsas, ofensas, conteúdos discriminatórios ou divulgação de informações sigilosas sem relação com o relato. Denúncias falsas podem acarretar medidas disciplinares e legais.</p>
+          <p><strong>Escopo do Protótipo.</strong> Esta versão armazena dados no seu próprio navegador (localStorage) e não envia arquivos; somente nome/tamanho/tipo dos anexos é salvo. Para produção, será implementado backend seguro, autenticação e armazenamento corporativo.</p>
+          <p><strong>Direitos do Titular.</strong> Você pode solicitar informações sobre o tratamento dos seus dados pessoais por meio dos canais de privacidade da empresa.</p>
+          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política de Uso e consente com o tratamento de dados aqui descrito.</p>
+        </div>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={agree}
+            onChange={(e) => setAgree(e.target.checked)}
+          />
+          <span className="text-sm">
+            Li e concordo com os termos e a Política de Uso da Linha Ética.
+          </span>
+        </label>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            className={agree ? btnPrimary : `${btnPrimary} cursor-not-allowed`}
+            disabled={!agree}
+            onClick={continuar}
+          >
+            <span className="inline-flex items-center gap-2">
+              Concordo e continuar <CheckCircle2 size={16} />
+            </span>
+          </button>
+          <a href="#/" className={btnOutline}>Cancelar e voltar</a>
+        </div>
+      </Card>
+
+      <AvisosSeguranca />
+    </section>
+  );
+}
+
+/* ==================== REPORT (com bloqueio se não aceitou) ==================== */
 function Report() {
   const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
@@ -213,6 +281,13 @@ function Report() {
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
+
+  // 🔒 impede acesso sem consentir
+  useEffect(() => {
+    if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
+      window.location.hash = "#/termos";
+    }
+  }, []);
 
   const isValidISODate = (s) =>
     /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
@@ -568,7 +643,7 @@ function FAQ() {
 }
 
 /* ==================== ADMIN protegido + mobile ==================== */
-const ADMIN_PASS = "Venture@4266";
+const ADMIN_PASS = "venture2025";
 
 function AdminPanel() {
   const [q, setQ] = useState("");
@@ -798,7 +873,7 @@ function AdminProtected() {
           <Field label="Senha" hint="Contato: compliance/ética">
             <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
-        {err && <div className="text-xs text-rose-600">{err}</div>}
+          {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
             <a href="#/" className={btnOutline}>Cancelar</a>
@@ -831,6 +906,8 @@ function AppRouter() {
         <FAQ />
       ) : route.startsWith("#/admin") ? (
         <AdminProtected />
+      ) : route.startsWith("#/termos") ? (
+        <Termos />
       ) : (
         <Home />
       )}

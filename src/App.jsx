@@ -568,7 +568,7 @@ function FAQ() {
 }
 
 /* ==================== ADMIN protegido + mobile ==================== */
-const ADMIN_PASS = "venture2025";
+const ADMIN_PASS = "Venture@4266";
 
 function AdminPanel() {
   const [q, setQ] = useState("");

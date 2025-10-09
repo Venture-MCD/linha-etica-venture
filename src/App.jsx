@@ -1,4 +1,3 @@
-import { ensureAnonAuth, uploadFile } from "./firebase";
 import React, { useEffect, useState } from "react";
 import {
   FileText,
@@ -13,11 +12,13 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import ventureLogo from "./logo-venture.jpeg";
+import { ensureAnonAuth, uploadFile } from "./firebase";
 
 /* ==================== Config & Consts ==================== */
 const POLICY_VERSION = "1.0";
-const POLICY_UPDATED = "09/10/2025"; // dd/mm/aaaa
+const POLICY_UPDATED = "09/10/2025";
 const CONSENT_KEY = "consent_ok";
+const ADMIN_PASS = "Venture@4266"; // senha alterada conforme solicitado
 
 /* ==================== Helpers visuais (com alinhamento) ==================== */
 const Field = ({ label, required, hint, children }) => (
@@ -138,20 +139,19 @@ const saveCasos = (casos) => localStorage.setItem("casos", JSON.stringify(casos)
 const genProtocolo = () => Math.random().toString(36).substring(2, 10).toUpperCase();
 const AvisosSeguranca = () => (
   <div className="text-xs text-slate-500">
-    ⚠️ Protótipo: os dados ficam no navegador local. Para produção, use backend seguro.
+    ⚠️ Protótipo: os dados ficam no navegador local (exceto anexos no Storage). Para produção, use backend seguro.
   </div>
 );
 
 /* ==================== HOME ==================== */
 function Home() {
-  // se já concordou antes, enviar direto para report ao clicar em Iniciar
   const nextHref = sessionStorage.getItem(CONSENT_KEY) === "1" ? "#/report" : "#/termos";
   return (
     <section id="home" className="space-y-4 md:space-y-6">
       <SectionTitle
         icon={ShieldAlert}
         title="Bem-vindo à Linha Ética"
-        subtitle="Canal independente para relatos de má conduta, riscos e violações."
+        subtitle="Canal independente para denúncias de má conduta, riscos e violações."
       />
       <div className="grid md:grid-cols-3 gap-3 md:gap-4">
         <Card>
@@ -159,7 +159,7 @@ function Home() {
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><FileText /></div>
             <div>
               <h3 className="font-semibold">Registrar denúncia</h3>
-              <p className="text-sm text-slate-600">Envie um relato anônimo ou identificado. Gere um protocolo para acompanhar.</p>
+              <p className="text-sm text-slate-600">Envie uma denúncia anônima ou identificada. Gere um protocolo para acompanhar.</p>
               <a href={nextHref} className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Iniciar <Send size={14} />
               </a>
@@ -227,10 +227,10 @@ function Termos() {
         <div className="text-sm text-slate-700 space-y-3 max-h-[55vh] overflow-auto pr-1">
           <p><strong>Objetivo.</strong> Este canal foi criado para que colaboradores, terceiros e demais partes interessadas relatem, de boa-fé, suspeitas de irregularidades, condutas inadequadas, violações de políticas internas ou leis aplicáveis.</p>
           <p><strong>Anonimato e Identificação.</strong> Você pode registrar a denúncia de forma anônima ou identificada. Ao optar por se identificar, seus dados de contato serão utilizados exclusivamente para retorno sobre o caso.</p>
-          <p><strong>Coleta e Tratamento de Dados (LGPD).</strong> Coletamos apenas as informações necessárias para apurar o fato: dados do relato, eventuais anexos (nome do arquivo, tamanho e tipo no protótipo), e, se fornecidos, dados de contato. O tratamento respeita os princípios da LGPD e a base legal aplicável (legítimo interesse e/ou exercício regular de direitos). Dados serão compartilhados somente com quem precisa conhecer para a apuração.</p>
-          <p><strong>Confidencialidade.</strong> O conteúdo do relato é confidencial e acessado exclusivamente por pessoas autorizadas. A empresa adota medidas para proteger a identidade do denunciante, na medida do possível.</p>
-          <p><strong>Boas-fé e Uso Responsável.</strong> É vedado o uso do canal para acusações sabidamente falsas, ofensas, conteúdos discriminatórios ou divulgação de informações sigilosas sem relação com o relato. Denúncias falsas podem acarretar medidas disciplinares e legais.</p>
-          <p><strong>Escopo do Protótipo.</strong> Esta versão armazena dados no seu próprio navegador (localStorage) e não envia arquivos; somente nome/tamanho/tipo dos anexos é salvo. Para produção, será implementado backend seguro, autenticação e armazenamento corporativo.</p>
+          <p><strong>Coleta e Tratamento de Dados (LGPD).</strong> Coletamos apenas as informações necessárias para apurar o fato: dados da denúncia, eventuais anexos (nome do arquivo, tamanho e tipo no protótipo), e, se fornecidos, dados de contato. O tratamento respeita os princípios da LGPD e a base legal aplicável (legítimo interesse e/ou exercício regular de direitos). Dados serão compartilhados somente com quem precisa conhecer para a apuração.</p>
+          <p><strong>Confidencialidade.</strong> O conteúdo da denúncia é confidencial e acessado exclusivamente por pessoas autorizadas. A empresa adota medidas para proteger a identidade do denunciante, na medida do possível.</p>
+          <p><strong>Boas-fé e Uso Responsável.</strong> É vedado o uso do canal para acusações sabidamente falsas, ofensas, conteúdos discriminatórios ou divulgação de informações sigilosas sem relação com a denúncia. Denúncias falsas podem acarretar medidas disciplinares e legais.</p>
+          <p><strong>Escopo do Protótipo.</strong> Esta versão armazena dados no seu próprio navegador (localStorage) e envia anexos ao Storage configurado. Para produção, será implementado backend seguro, autenticação e armazenamento corporativo.</p>
           <p><strong>Direitos do Titular.</strong> Você pode solicitar informações sobre o tratamento dos seus dados pessoais por meio dos canais de privacidade da empresa.</p>
           <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política de Uso e consente com o tratamento de dados aqui descrito.</p>
         </div>
@@ -266,7 +266,7 @@ function Termos() {
   );
 }
 
-/* ==================== REPORT (com bloqueio se não aceitou) ==================== */
+/* ==================== REPORT ==================== */
 function Report() {
   const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
@@ -278,12 +278,15 @@ function Report() {
   const [valorFinanceiro, setValorFinanceiro] = useState("");
   const [foiReportado, setFoiReportado] = useState("nao");
   const [paraQuem, setParaQuem] = useState("");
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState([]); // File[]
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
-  // 🔒 impede acesso sem consentir
+  // novos states para evitar duplicidade
+  const [submitting, setSubmitting] = useState(false);
+
+  // bloqueio de rota se não aceitou termos
   useEffect(() => {
     if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
       window.location.hash = "#/termos";
@@ -312,67 +315,102 @@ function Report() {
   const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
   const canSubmit = canNext1 && canNext2;
 
-  const onSubmit = async () => {
-  if (!canSubmit) {
-    alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
-    return;
-  }
-
-  // Autenticação anônima (necessária para regras do Storage)
-  try {
-    await ensureAnonAuth();
-  } catch (e) {
-    console.error("Anon auth error:", e);
-    alert("Falha ao iniciar sessão anônima para enviar anexos. Tente novamente.");
-    return;
-  }
-
-  const protocolo = genProtocolo();
-
-  // Upload dos anexos (se houver)
-  let anexosSubidos = [];
-  if (files.length) {
-    try {
-      const uploaded = [];
-      for (const f of files) {
-        const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-        const path = `reports/${protocolo}/${safeName}`;
-        const url = await uploadFile(path, f);
-        uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
-      }
-      anexosSubidos = uploaded;
-    } catch (err) {
-      console.error("Upload error:", err);
-      alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
-      anexosSubidos = [];
-    }
-  }
-
-  const casos = loadCasos();
-  const novo = {
-    protocolo,
-    createdAt: new Date().toISOString(),
-    unidade,
-    categoria,
-    perguntas: {
-      periodo: { tipo: "unico", data: dataUnica },
-      periodicidade,
-      onde,
-      valorFinanceiro,
-      foiReportado,
-      paraQuem,
-    },
-    descricao: descricao.trim(),
-    anonimo,
-    contato: anonimo ? null : { ...contato, prefer },
-    anexos: anexosSubidos, // << com url agora
-    status: "Recebido",
+  // idempotency key (hash do payload)
+  const payloadHash = () => {
+    const payload = {
+      unidade, categoria, dataUnica, periodicidade, onde,
+      descricao: descricao.trim(),
+      valorFinanceiro, foiReportado, paraQuem,
+      anonimo, contato, prefer,
+      files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
+    };
+    const s = JSON.stringify(payload);
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return (h >>> 0).toString(36);
   };
-  saveCasos([novo, ...casos]);
 
-  window.location.hash = `#/status?proto=${protocolo}`;
-  alert(`Denúncia registrada. Protocolo: ${protocolo}`);
-};
+  const onSubmit = async () => {
+    if (!canSubmit) {
+      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
+      return;
+    }
+
+    if (submitting) return; // já está enviando
+
+    const key = payloadHash();
+    const last = sessionStorage.getItem("last_submit_hash");
+    if (last && last === key) {
+      alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      sessionStorage.setItem("last_submit_hash", key);
+
+      // autenticação anônima
+      try {
+        await ensureAnonAuth();
+      } catch (e) {
+        console.error("Anon auth error:", e);
+        alert("Falha ao iniciar sessão anônima para enviar anexos. Tente novamente.");
+        sessionStorage.removeItem("last_submit_hash");
+        return;
+      }
+
+      const protocolo = genProtocolo();
+
+      // upload arquivos (se houver)
+      let anexosSubidos = [];
+      if (files.length) {
+        try {
+          const uploaded = [];
+          for (const f of files) {
+            const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+            const path = `reports/${protocolo}/${safeName}`;
+            const url = await uploadFile(path, f);
+            uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+          }
+          anexosSubidos = uploaded;
+        } catch (err) {
+          console.error("Upload error:", err);
+          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
+          anexosSubidos = [];
+        }
+      }
+
+      // salva caso localmente
+      const casos = loadCasos();
+      const novo = {
+        protocolo,
+        createdAt: new Date().toISOString(),
+        unidade,
+        categoria,
+        perguntas: {
+          periodo: { tipo: "unico", data: dataUnica },
+          periodicidade,
+          onde,
+          valorFinanceiro,
+          foiReportado,
+          paraQuem,
+        },
+        descricao: descricao.trim(),
+        anonimo,
+        contato: anonimo ? null : { ...contato, prefer },
+        anexos: anexosSubidos,
+        status: "Recebido",
+        _idempotency: key,
+      };
+      saveCasos([novo, ...casos]);
+
+      window.location.hash = `#/status?proto=${protocolo}`;
+      alert(`Denúncia registrada. Protocolo: ${protocolo}`);
+    } finally {
+      setSubmitting(false);
+      // mantemos last_submit_hash para evitar reenvios idênticos na sessão
+    }
+  };
 
   const StepChip = ({ n }) => {
     const active = step === n;
@@ -396,7 +434,13 @@ function Report() {
         title="Registrar denúncia"
         subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
       />
-      <Card className="space-y-4">
+      <Card className={`space-y-4 ${submitting ? "pointer-events-none opacity-70 relative" : ""}`}>
+        {submitting && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center">
+            <div className="bg-black/40 rounded-md px-4 py-2 text-white">Enviando…</div>
+          </div>
+        )}
+
         {/* Stepper */}
         <div className="flex items-center gap-2 text-xs">
           <span className="hidden md:inline text-slate-500">Etapas:</span>
@@ -426,7 +470,7 @@ function Report() {
             </div>
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
               <a href="#/" className={btnOutline}>Home</a>
-              <button disabled={!canNext1} onClick={() => setStep(2)} className={btnPrimary}>
+              <button disabled={!canNext1 || submitting} onClick={() => setStep(2)} className={btnPrimary}>
                 Próxima
               </button>
             </div>
@@ -470,7 +514,7 @@ function Report() {
             </div>
 
             <Field
-              label="Descreva detalhadamente o ocorrido *"
+              label="Descreva detalhadamente a denúncia *"
               hint="O que aconteceu? Quem estava envolvido? Há evidências?"
             >
               <textarea
@@ -492,7 +536,7 @@ function Report() {
 
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
               <button onClick={() => setStep(1)} className={btnOutline}>Voltar</button>
-              <button disabled={!canNext2} onClick={() => setStep(3)} className={btnPrimary}>
+              <button disabled={!canNext2 || submitting} onClick={() => setStep(3)} className={btnPrimary}>
                 Próxima
               </button>
             </div>
@@ -541,23 +585,25 @@ function Report() {
           <div className="space-y-4">
             <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
               <input
-  type="file"
-  multiple
-  onChange={(e) => {
-    const list = Array.from(e.target.files || []);
-    const ok = list.filter((f) => f.size <= 8 * 1024 * 1024); // 8MB
-    const rejeitados = list.length - ok.length;
-    if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 8MB (${rejeitados}).`);
-    setFiles(ok); // << agora guarda File[]
-  }}
-/>
-{!!files.length && (
-  <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
-    {files.map((f, i) => (
-      <li key={i}>{f.name} ({Math.round(f.size/1024)} KB)</li>
-    ))}
-  </ul>
-)}
+                type="file"
+                multiple
+                onChange={(e) => {
+                  const list = Array.from(e.target.files || []);
+                  const ok = list.filter((f) => f.size <= 8 * 1024 * 1024);
+                  const rejeitados = list.length - ok.length;
+                  if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 8MB (${rejeitados}).`);
+                  setFiles(ok);
+                }}
+              />
+              {!!files.length && (
+                <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
+                  {files.map((f, i) => (
+                    <li key={i}>
+                      {f.name} ({Math.round(f.size / 1024)} KB)
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Field>
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
               <button onClick={() => setStep(3)} className={btnOutline}>Voltar</button>
@@ -605,9 +651,9 @@ function Report() {
             )}
 
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
-              <button onClick={() => setStep(4)} className={btnOutline}>Voltar</button>
-              <button onClick={onSubmit} disabled={!canSubmit} className={btnPrimary}>
-                Enviar denúncia
+              <button onClick={() => setStep(4)} className={btnOutline} disabled={submitting}>Voltar</button>
+              <button onClick={onSubmit} disabled={!canSubmit || submitting} className={btnPrimary}>
+                {submitting ? "Enviando…" : "Enviar denúncia"}
               </button>
             </div>
           </div>
@@ -677,7 +723,6 @@ function AdminPanel() {
   const [casos, setCasos] = useState(loadCasos());
   const [sel, setSel] = useState(null);
 
-  // Atualiza quando voltar para a aba
   useEffect(() => {
     const onFocus = () => setCasos(loadCasos());
     window.addEventListener("focus", onFocus);
@@ -940,37 +985,39 @@ function AdminPanel() {
             </div>
 
             {Array.isArray(sel.anexos) && (
-  <div className="mt-3">
-    <div className="text-xs text-slate-500">Anexos</div>
-    {sel.anexos.length === 0 ? (
-      <div>-</div>
-    ) : (
-      <ul className="list-disc pl-5">
-        {sel.anexos.map((f, i) => (
-          <li key={i}>
-            {f.url ? (
-              <a
-                href={f.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-emerald-700 underline"
-              >
-                {f.name}
-              </a>
-            ) : (
-              f.name
+              <div className="mt-3">
+                <div className="text-xs text-slate-500">Anexos</div>
+                {sel.anexos.length === 0 ? (
+                  <div>-</div>
+                ) : (
+                  <ul className="list-disc pl-5">
+                    {sel.anexos.map((f, i) => (
+                      <li key={i}>
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 underline"
+                          >
+                            {f.name}
+                          </a>
+                        ) : (
+                          f.name
+                        )}
+                        {typeof f.size === "number"
+                          ? ` (${Math.round(f.size / 1024)} KB)`
+                          : ""}
+                        {f.type ? ` — ${f.type}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="text-xs text-slate-500 mt-1">
+                  Obs.: Registros antigos podem não ter link. Novos envios já exibem o link.
+                </div>
+              </div>
             )}
-            {typeof f.size === "number" ? ` (${Math.round(f.size / 1024)} KB)` : ""}
-            {f.type ? ` — ${f.type}` : ""}
-          </li>
-        ))}
-      </ul>
-    )}
-    <div className="text-xs text-slate-500 mt-1">
-      Observação: registros antigos podem não ter link. Novos envios já exibem o link.
-    </div>
-  </div>
-)}
           </div>
         )}
       </Card>
@@ -979,9 +1026,7 @@ function AdminPanel() {
   );
 }
 
-/* ==================== ADMIN (proteção por senha) ==================== */
-const ADMIN_PASS = "Venture@4266"; // ajuste a sua senha aqui
-
+/* ==================== ADMIN protegido ==================== */
 function AdminProtected() {
   const [ok, setOk] = useState(sessionStorage.getItem("admin_ok") === "1");
   const [pwd, setPwd] = useState("");
@@ -1002,36 +1047,24 @@ function AdminProtected() {
 
   return (
     <section className="space-y-4 md:space-y-6">
-      <SectionTitle
-        icon={Lock}
-        title="Acesso restrito"
-        subtitle="Informe a senha para acessar o painel."
-      />
+      <SectionTitle icon={Lock} title="Acesso restrito" subtitle="Informe a senha para acessar o painel." />
       <Card className="space-y-3 max-w-md">
         <form onSubmit={submit} className="space-y-3">
           <Field label="Senha" hint="Contato: compliance/ética">
-            <input
-              type="password"
-              className={inputClass}
-              value={pwd}
-              onChange={(e) => setPwd(e.target.value)}
-            />
+            <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
           {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
-            <a href="#/" className={btnOutline}>
-              Cancelar
-            </a>
+            <a href="#/" className={btnOutline}>Cancelar</a>
           </div>
         </form>
-        <div className="text-xs text-slate-500">
-          Dica: altere a constante <code>ADMIN_PASS</code> no código.
-        </div>
+        <div className="text-xs text-slate-500">Dica: altere a constante <code>ADMIN_PASS</code> no código.</div>
       </Card>
     </section>
   );
 }
+
 /* ==================== Router ==================== */
 function AppRouter() {
   const [route, setRoute] = useState(window.location.hash || "#/");

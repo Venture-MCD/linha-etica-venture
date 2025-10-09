@@ -18,9 +18,9 @@ import { ensureAnonAuth, uploadFile } from "./firebase";
 const POLICY_VERSION = "1.0";
 const POLICY_UPDATED = "09/10/2025";
 const CONSENT_KEY = "consent_ok";
-const ADMIN_PASS = "Venture@4266"; // senha alterada conforme solicitado
+const ADMIN_PASS = "Venture@4266";
 
-/* ==================== Helpers visuais (com alinhamento) ==================== */
+/* ==================== Helpers visuais ==================== */
 const Field = ({ label, required, hint, children }) => (
   <label
     className="grid gap-1"
@@ -90,7 +90,7 @@ const Stat = ({ label, value }) => (
   </div>
 );
 
-/* ==================== NAV responsivo ==================== */
+/* ==================== NAV ==================== */
 const Nav = () => {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -131,7 +131,7 @@ const Nav = () => {
   );
 };
 
-/* ==================== Dados mock & utils ==================== */
+/* ==================== Dados & Utils ==================== */
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
 const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
 const loadCasos = () => JSON.parse(localStorage.getItem("casos") || "[]");
@@ -206,7 +206,7 @@ function Home() {
   );
 }
 
-/* ==================== POLÍTICA DE USO (Obrigatória) ==================== */
+/* ==================== POLÍTICA DE USO ==================== */
 function Termos() {
   const [agree, setAgree] = useState(false);
 
@@ -227,12 +227,11 @@ function Termos() {
         <div className="text-sm text-slate-700 space-y-3 max-h-[55vh] overflow-auto pr-1">
           <p><strong>Objetivo.</strong> Este canal foi criado para que colaboradores, terceiros e demais partes interessadas relatem, de boa-fé, suspeitas de irregularidades, condutas inadequadas, violações de políticas internas ou leis aplicáveis.</p>
           <p><strong>Anonimato e Identificação.</strong> Você pode registrar a denúncia de forma anônima ou identificada. Ao optar por se identificar, seus dados de contato serão utilizados exclusivamente para retorno sobre o caso.</p>
-          <p><strong>Coleta e Tratamento de Dados (LGPD).</strong> Coletamos apenas as informações necessárias para apurar o fato: dados da denúncia, eventuais anexos (nome do arquivo, tamanho e tipo no protótipo), e, se fornecidos, dados de contato. O tratamento respeita os princípios da LGPD e a base legal aplicável (legítimo interesse e/ou exercício regular de direitos). Dados serão compartilhados somente com quem precisa conhecer para a apuração.</p>
-          <p><strong>Confidencialidade.</strong> O conteúdo da denúncia é confidencial e acessado exclusivamente por pessoas autorizadas. A empresa adota medidas para proteger a identidade do denunciante, na medida do possível.</p>
-          <p><strong>Boas-fé e Uso Responsável.</strong> É vedado o uso do canal para acusações sabidamente falsas, ofensas, conteúdos discriminatórios ou divulgação de informações sigilosas sem relação com a denúncia. Denúncias falsas podem acarretar medidas disciplinares e legais.</p>
-          <p><strong>Escopo do Protótipo.</strong> Esta versão armazena dados no seu próprio navegador (localStorage) e envia anexos ao Storage configurado. Para produção, será implementado backend seguro, autenticação e armazenamento corporativo.</p>
-          <p><strong>Direitos do Titular.</strong> Você pode solicitar informações sobre o tratamento dos seus dados pessoais por meio dos canais de privacidade da empresa.</p>
-          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política de Uso e consente com o tratamento de dados aqui descrito.</p>
+          <p><strong>Coleta e Tratamento de Dados (LGPD).</strong> Coletamos apenas as informações necessárias para apurar o fato: dados da denúncia, eventuais anexos, e, se fornecidos, dados de contato. O tratamento respeita os princípios da LGPD.</p>
+          <p><strong>Confidencialidade.</strong> O conteúdo da denúncia é confidencial e acessado exclusivamente por pessoas autorizadas.</p>
+          <p><strong>Boas-fé e Uso Responsável.</strong> É vedado o uso do canal para acusações sabidamente falsas, ofensas, conteúdos discriminatórios ou divulgação de informações sigilosas sem relação com a denúncia.</p>
+          <p><strong>Escopo do Protótipo.</strong> Esta versão armazena dados no seu próprio navegador (localStorage) e envia anexos ao Storage configurado. Para produção, será implementado backend seguro.</p>
+          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política de Uso.</p>
         </div>
 
         <label className="flex items-start gap-2">
@@ -283,10 +282,10 @@ function Report() {
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
-  // novos states para evitar duplicidade
+  // anti duplicação
   const [submitting, setSubmitting] = useState(false);
 
-  // bloqueio de rota se não aceitou termos
+  // exige aceite de termos
   useEffect(() => {
     if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
       window.location.hash = "#/termos";
@@ -315,7 +314,7 @@ function Report() {
   const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
   const canSubmit = canNext1 && canNext2;
 
-  // idempotency key (hash do payload)
+  // idempotency key
   const payloadHash = () => {
     const payload = {
       unidade, categoria, dataUnica, periodicidade, onde,
@@ -335,8 +334,7 @@ function Report() {
       alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
       return;
     }
-
-    if (submitting) return; // já está enviando
+    if (submitting) return;
 
     const key = payloadHash();
     const last = sessionStorage.getItem("last_submit_hash");
@@ -349,10 +347,9 @@ function Report() {
       setSubmitting(true);
       sessionStorage.setItem("last_submit_hash", key);
 
-      // autenticação anônima
       try {
         await ensureAnonAuth();
-      } catch (e) {
+    } catch (e) {
         console.error("Anon auth error:", e);
         alert("Falha ao iniciar sessão anônima para enviar anexos. Tente novamente.");
         sessionStorage.removeItem("last_submit_hash");
@@ -361,7 +358,6 @@ function Report() {
 
       const protocolo = genProtocolo();
 
-      // upload arquivos (se houver)
       let anexosSubidos = [];
       if (files.length) {
         try {
@@ -380,7 +376,6 @@ function Report() {
         }
       }
 
-      // salva caso localmente
       const casos = loadCasos();
       const novo = {
         protocolo,
@@ -408,7 +403,6 @@ function Report() {
       alert(`Denúncia registrada. Protocolo: ${protocolo}`);
     } finally {
       setSubmitting(false);
-      // mantemos last_submit_hash para evitar reenvios idênticos na sessão
     }
   };
 
@@ -441,7 +435,6 @@ function Report() {
           </div>
         )}
 
-        {/* Stepper */}
         <div className="flex items-center gap-2 text-xs">
           <span className="hidden md:inline text-slate-500">Etapas:</span>
           {[1, 2, 3, 4, 5].map((n) => (
@@ -449,7 +442,6 @@ function Report() {
           ))}
         </div>
 
-        {/* ETAPA 1 */}
         {step === 1 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4 items-start">
@@ -477,7 +469,6 @@ function Report() {
           </div>
         )}
 
-        {/* ETAPA 2 */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-12 gap-4 items-start">
@@ -543,7 +534,6 @@ function Report() {
           </div>
         )}
 
-        {/* ETAPA 3 */}
         {step === 3 && (
           <div className="space-y-4">
             <div className="grid md:grid-cols-12 gap-4 items-start">
@@ -580,7 +570,6 @@ function Report() {
           </div>
         )}
 
-        {/* ETAPA 4 */}
         {step === 4 && (
           <div className="space-y-4">
             <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
@@ -612,7 +601,6 @@ function Report() {
           </div>
         )}
 
-        {/* ETAPA 5 */}
         {step === 5 && (
           <div className="space-y-4">
             <Field label="Anonimato" hint=" ">
@@ -920,7 +908,7 @@ function AdminPanel() {
 
         {/* Detalhes do selecionado */}
         {sel && (
-          <div className="rounded-lg border p-3 bg-slate-50">
+          <div className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm text-slate-500">Protocolo</div>
@@ -981,7 +969,12 @@ function AdminPanel() {
 
             <div className="mt-3">
               <div className="text-xs text-slate-500">Descrição</div>
-              <div className="whitespace-pre-wrap">{sel.descricao}</div>
+              <div
+                className="whitespace-pre-wrap max-w-full"
+                style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+              >
+                {sel.descricao}
+              </div>
             </div>
 
             {Array.isArray(sel.anexos) && (
@@ -1093,6 +1086,9 @@ function AppRouter() {
       )}
     </main>
   );
+}
+
+export default AppRouter;
 }
 
 export default AppRouter;

@@ -11,13 +11,16 @@ import {
 } from "lucide-react";
 import ventureLogo from "./logo-venture.jpeg";
 
-/* ==================== Helpers visuais ==================== */
+/* ==================== Helpers visuais (com alinhamento) ==================== */
 const Field = ({ label, required, hint, children }) => (
-  <label className="grid gap-1">
+  <label
+    className="grid gap-1"
+    style={{ gridTemplateRows: "minmax(20px,auto) minmax(16px,auto) auto" }}
+  >
     <span className="text-sm font-medium leading-5">
       {label} {required && <span className="text-rose-600">*</span>}
     </span>
-    <div className={`text-xs ${hint ? "text-slate-500" : "opacity-0"}`}>
+    <div className={`text-xs leading-4 ${hint ? "text-slate-500" : "opacity-0"}`}>
       {hint || "\u00A0"}
     </div>
     {children}
@@ -29,13 +32,14 @@ const SelectBase = ({ className = "", children, ...props }) => (
     <select
       {...props}
       className={
-        "w-full h-12 rounded-lg border pl-3 pr-10 align-middle appearance-none " +
-        "focus:outline-none focus:ring-2 focus:ring-emerald-600 " +
+        "w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] " +
+        "appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600 " +
         className
       }
     >
       {children}
     </select>
+    {/* seta */}
     <svg
       aria-hidden="true"
       className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70"
@@ -48,7 +52,8 @@ const SelectBase = ({ className = "", children, ...props }) => (
 );
 
 const inputClass =
-  "w-full h-12 rounded-lg border px-3 focus:outline-none focus:ring-2 focus:ring-emerald-600";
+  "w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600";
+
 const btnPrimary =
   "w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed";
 const btnOutline =
@@ -285,7 +290,7 @@ function Report() {
         subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
       />
       <Card className="space-y-4">
-        {/* Stepper compacto */}
+        {/* Stepper */}
         <div className="flex items-center gap-2 text-xs">
           <span className="hidden md:inline text-slate-500">Etapas:</span>
           {[1, 2, 3, 4, 5].map((n) => (
@@ -793,7 +798,7 @@ function AdminProtected() {
           <Field label="Senha" hint="Contato: compliance/ética">
             <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
-          {err && <div className="text-xs text-rose-600">{err}</div>}
+        {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
             <a href="#/" className={btnOutline}>Cancelar</a>

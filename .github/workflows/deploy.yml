@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# 🔧 Isto cancela automaticamente execuções anteriores da mesma branch
+# Cancela execuções antigas da mesma branch para não travar fila
 concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: true
@@ -21,18 +21,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Node para build do Vite
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install
-        run: npm ci
+      # Use install (não 'ci') para evitar erro quando não há package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
 
       - name: Build
         run: npm run build
 
-      # Empacota a pasta dist para o Pages
+      # Garante que a pasta dist existe antes de subir (evita exit 1 silencioso)
+      - name: Check dist
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "dist/ não foi gerado pelo build"; exit 1;
+          fi
+          ls -la dist
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

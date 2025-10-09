@@ -1,19 +1,23 @@
 import React, { useEffect, useState } from "react";
-import { FileText, Search, HelpCircle, Send, ShieldAlert, Lock } from "lucide-react";
-import ventureLogo from "./logo-venture.jpeg"; // arquivo em src/logo-venture.jpeg
+import {
+  FileText,
+  Search,
+  HelpCircle,
+  Send,
+  ShieldAlert,
+  Lock,
+  Menu,
+  X,
+} from "lucide-react";
+import ventureLogo from "./logo-venture.jpeg";
 
-/* =========================================================
-   Helpers visuais
-   ========================================================= */
+/* ==================== Helpers visuais ==================== */
 const Field = ({ label, required, hint, children }) => (
-  <label
-    className="grid gap-1"
-    style={{ gridTemplateRows: "minmax(40px,auto) minmax(18px,auto) auto" }}
-  >
+  <label className="grid gap-1">
     <span className="text-sm font-medium leading-5">
       {label} {required && <span className="text-rose-600">*</span>}
     </span>
-    <div className={`text-xs leading-4 ${hint ? "text-slate-500" : "opacity-0"}`}>
+    <div className={`text-xs ${hint ? "text-slate-500" : "opacity-0"}`}>
       {hint || "\u00A0"}
     </div>
     {children}
@@ -25,7 +29,7 @@ const SelectBase = ({ className = "", children, ...props }) => (
     <select
       {...props}
       className={
-        "w-full h-10 rounded-lg border pl-3 pr-8 py-0 leading-[38px] pt-px align-middle appearance-none " +
+        "w-full h-12 rounded-lg border pl-3 pr-10 align-middle appearance-none " +
         "focus:outline-none focus:ring-2 focus:ring-emerald-600 " +
         className
       }
@@ -34,7 +38,7 @@ const SelectBase = ({ className = "", children, ...props }) => (
     </select>
     <svg
       aria-hidden="true"
-      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70"
+      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70"
       viewBox="0 0 20 20"
       fill="currentColor"
     >
@@ -44,17 +48,21 @@ const SelectBase = ({ className = "", children, ...props }) => (
 );
 
 const inputClass =
-  "w-full h-10 rounded-lg border pl-3 pr-3 py-0 leading-[38px] pt-px";
+  "w-full h-12 rounded-lg border px-3 focus:outline-none focus:ring-2 focus:ring-emerald-600";
+const btnPrimary =
+  "w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed";
+const btnOutline =
+  "w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50";
 
 const Card = ({ className, children }) => (
-  <div className={`rounded-xl border p-6 bg-white shadow ${className || ""}`}>
+  <div className={`rounded-xl border p-5 md:p-6 bg-white shadow ${className || ""}`}>
     {children}
   </div>
 );
 
 const SectionTitle = ({ icon: Icon, title, subtitle }) => (
   <div className="space-y-1">
-    <h2 className="flex items-center gap-2 text-xl font-bold">
+    <h2 className="flex items-center gap-2 text-lg md:text-xl font-bold">
       <Icon className="h-5 w-5 text-emerald-600" />
       {title}
     </h2>
@@ -69,117 +77,114 @@ const Stat = ({ label, value }) => (
   </div>
 );
 
-/* =========================================================
-   NAV com logo + nome (aparece em todas as páginas)
-   ========================================================= */
-const Nav = () => (
-  <nav className="flex items-center justify-between mb-6">
-    <a href="#/" className="flex items-center gap-2">
-      <img src={ventureLogo} alt="Venture" className="h-7 w-auto object-contain" />
-      <span className="text-base font-semibold tracking-tight">Venture</span>
-    </a>
-    <div className="flex gap-4">
-      <a href="#/" className="text-sm text-emerald-700 hover:underline">Home</a>
-      <a href="#/report" className="text-sm text-emerald-700 hover:underline">Registrar denúncia</a>
-      <a href="#/status" className="text-sm text-emerald-700 hover:underline">Acompanhar</a>
-      <a href="#/faq" className="text-sm text-emerald-700 hover:underline">FAQ</a>
-    </div>
-  </nav>
-);
+/* ==================== NAV responsivo ==================== */
+const Nav = () => {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const close = () => setOpen(false);
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
+  return (
+    <nav className="mb-4 md:mb-6">
+      <div className="flex items-center justify-between">
+        <a href="#/" className="flex items-center gap-2">
+          <img src={ventureLogo} alt="Venture" className="h-7 w-auto object-contain" />
+          <span className="text-base font-semibold tracking-tight">Venture</span>
+        </a>
+        <div className="hidden md:flex gap-4">
+          <a href="#/" className="text-sm text-emerald-700 hover:underline">Home</a>
+          <a href="#/report" className="text-sm text-emerald-700 hover:underline">Registrar denúncia</a>
+          <a href="#/status" className="text-sm text-emerald-700 hover:underline">Acompanhar</a>
+          <a href="#/faq" className="text-sm text-emerald-700 hover:underline">FAQ</a>
+        </div>
+        <button
+          className="md:hidden p-2 rounded-lg border"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Abrir menu"
+        >
+          {open ? <X size={18} /> : <Menu size={18} />}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-3 grid gap-2 md:hidden">
+          <a href="#/" className="px-3 py-2 rounded-lg border">Home</a>
+          <a href="#/report" className="px-3 py-2 rounded-lg border">Registrar denúncia</a>
+          <a href="#/status" className="px-3 py-2 rounded-lg border">Acompanhar</a>
+          <a href="#/faq" className="px-3 py-2 rounded-lg border">FAQ</a>
+        </div>
+      )}
+    </nav>
+  );
+};
 
-/* =========================================================
-   Dados/mocks (trocar por backend real no futuro)
-   ========================================================= */
+/* ==================== Dados mock ==================== */
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
 const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
-
 const loadCasos = () => JSON.parse(localStorage.getItem("casos") || "[]");
 const saveCasos = (casos) => localStorage.setItem("casos", JSON.stringify(casos));
 const genProtocolo = () => Math.random().toString(36).substring(2, 10).toUpperCase();
-
 const AvisosSeguranca = () => (
   <div className="text-xs text-slate-500">
     ⚠️ Protótipo: os dados ficam no navegador local. Para produção, use backend seguro.
   </div>
 );
 
-/* =========================================================
-   HOME (sem logo duplicado)
-   ========================================================= */
+/* ==================== HOME ==================== */
 function Home() {
   return (
-    <section id="home" className="space-y-6">
+    <section id="home" className="space-y-4 md:space-y-6">
       <SectionTitle
         icon={ShieldAlert}
         title="Bem-vindo à Linha Ética"
-        subtitle="Canal independente para denúncias de má conduta, riscos e violações."
+        subtitle="Canal independente para relatos de má conduta, riscos e violações."
       />
-
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-3 gap-3 md:gap-4">
         <Card>
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><FileText /></div>
             <div>
               <h3 className="font-semibold">Registrar denúncia</h3>
-              <p className="text-sm text-slate-600">
-                Envie um relato anônimo ou identificado. Gere um protocolo para acompanhar.
-              </p>
-              <a
-                href="#/report"
-                className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline"
-              >
+              <p className="text-sm text-slate-600">Envie um relato anônimo ou identificado. Gere um protocolo para acompanhar.</p>
+              <a href="#/report" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Iniciar <Send size={14} />
               </a>
             </div>
           </div>
         </Card>
-
         <Card>
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><Search /></div>
             <div>
               <h3 className="font-semibold">Acompanhar status</h3>
-              <p className="text-sm text-slate-600">
-                Use seu protocolo para ver andamento e interagir com o time responsável.
-              </p>
-              <a
-                href="#/status"
-                className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline"
-              >
+              <p className="text-sm text-slate-600">Use seu protocolo para ver andamento e interagir com o time responsável.</p>
+              <a href="#/status" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Acompanhar <Search size={14} />
               </a>
             </div>
           </div>
         </Card>
-
         <Card>
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><HelpCircle /></div>
             <div>
               <h3 className="font-semibold">FAQ / Política</h3>
-              <p className="text-sm text-slate-600">
-                Entenda como protegemos sua identidade e tratamos seus dados (LGPD).
-              </p>
-              <a
-                href="#/faq"
-                className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline"
-              >
+              <p className="text-sm text-slate-600">Entenda como protegemos sua identidade e tratamos seus dados (LGPD).</p>
+              <a href="#/faq" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Ver perguntas <HelpCircle size={14} />
               </a>
             </div>
           </div>
         </Card>
       </div>
-
       <Card>
-        <div className="grid md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Stat label="Unidades" value="10" />
           <Stat label="Tempo médio de abertura" value="2 min" />
           <Stat label="Protocolo gerado" value="Automático" />
           <Stat label="Custo" value="Hospedagem estática" />
         </div>
       </Card>
-
       <div className="text-xs text-slate-500">
         Área restrita: <a href="#/admin" className="underline inline-flex items-center gap-1">Painel <Lock size={12} /></a>
       </div>
@@ -187,32 +192,23 @@ function Home() {
   );
 }
 
-/* =========================================================
-   REPORT — 5 etapas (data única obrigatória, sem futuro)
-   ========================================================= */
+/* ==================== REPORT ==================== */
 function Report() {
   const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-
-  // ETAPA 2
-  const [dataUnica, setDataUnica] = useState(""); // yyyy-mm-dd
+  const [dataUnica, setDataUnica] = useState("");
   const [periodicidade, setPeriodicidade] = useState("único");
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
-
-  // ETAPA 3
   const [valorFinanceiro, setValorFinanceiro] = useState("");
   const [foiReportado, setFoiReportado] = useState("nao");
   const [paraQuem, setParaQuem] = useState("");
-
-  // ETAPA 4/5
   const [files, setFiles] = useState([]);
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
-  // Validação de data (não aceita futuro)
   const isValidISODate = (s) =>
     /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
   const isFuture = (s) => {
@@ -237,9 +233,7 @@ function Report() {
 
   const onSubmit = () => {
     if (!canSubmit) {
-      alert(
-        "Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100)."
-      );
+      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
       return;
     }
     const casos = loadCasos();
@@ -278,21 +272,22 @@ function Report() {
             : "px-2 py-1 rounded-full border bg-white"
         }
       >
-        Etapa {n}
+        {n}
       </div>
     );
   };
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-4 md:space-y-6">
       <SectionTitle
         icon={FileText}
         title="Registrar denúncia"
         subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
       />
-      <Card className="space-y-5">
-        {/* Stepper */}
+      <Card className="space-y-4">
+        {/* Stepper compacto */}
         <div className="flex items-center gap-2 text-xs">
+          <span className="hidden md:inline text-slate-500">Etapas:</span>
           {[1, 2, 3, 4, 5].map((n) => (
             <StepChip key={n} n={n} />
           ))}
@@ -303,39 +298,23 @@ function Report() {
           <div className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4 items-start">
               <Field label="Unidade *">
-                <SelectBase
-                  value={unidade}
-                  onChange={(e) => setUnidade(e.target.value)}
-                >
+                <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
                   {UNIDADES.map((u) => (
                     <option key={u}>{u}</option>
                   ))}
                 </SelectBase>
               </Field>
               <Field label="Categoria *">
-                <SelectBase
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                >
+                <SelectBase value={categoria} onChange={(e) => setCategoria(e.target.value)}>
                   {CATEGORIAS.map((c) => (
                     <option key={c}>{c}</option>
                   ))}
                 </SelectBase>
               </Field>
             </div>
-            <div className="flex justify-between">
-              <a href="#/" className="px-3 py-2 rounded-lg border">
-                Home
-              </a>
-              <button
-                disabled={!canNext1}
-                onClick={() => setStep(2)}
-                className={
-                  canNext1
-                    ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
-                    : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
-                }
-              >
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <a href="#/" className={btnOutline}>Home</a>
+              <button disabled={!canNext1} onClick={() => setStep(2)} className={btnPrimary}>
                 Próxima
               </button>
             </div>
@@ -354,17 +333,12 @@ function Report() {
                     value={dataUnica}
                     onChange={(e) => setDataUnica(e.target.value)}
                   />
-                  {dateError && (
-                    <div className="text-xs text-rose-600 mt-1">{dateError}</div>
-                  )}
+                  {dateError && <div className="text-xs text-rose-600 mt-1">{dateError}</div>}
                 </Field>
               </div>
               <div className="md:col-span-4">
                 <Field label="Recorrência" hint=" ">
-                  <SelectBase
-                    value={periodicidade}
-                    onChange={(e) => setPeriodicidade(e.target.value)}
-                  >
+                  <SelectBase value={periodicidade} onChange={(e) => setPeriodicidade(e.target.value)}>
                     <option value="único">Evento único</option>
                     <option value="recorrente">Recorrente</option>
                     <option value="contínuo">Contínuo</option>
@@ -385,10 +359,10 @@ function Report() {
 
             <Field
               label="Descreva detalhadamente o ocorrido *"
-              hint="O que aconteceu? Quem estava envolvido? Há evidências? Coloque o máximo de detalhes e nomes"
+              hint="O que aconteceu? Quem estava envolvido? Há evidências?"
             >
               <textarea
-                className="w-full rounded-lg border p-3 min-h-[180px]"
+                className="w-full rounded-lg border p-3 min-h-[160px]"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
                 placeholder="Conte os fatos com o máximo de detalhes possíveis…"
@@ -404,19 +378,9 @@ function Report() {
               </div>
             </Field>
 
-            <div className="flex justify-between">
-              <button onClick={() => setStep(1)} className="px-3 py-2 rounded-lg border">
-                Voltar
-              </button>
-              <button
-                disabled={!canNext2}
-                onClick={() => setStep(3)}
-                className={
-                  canNext2
-                    ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
-                    : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
-                }
-              >
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(1)} className={btnOutline}>Voltar</button>
+              <button disabled={!canNext2} onClick={() => setStep(3)} className={btnPrimary}>
                 Próxima
               </button>
             </div>
@@ -425,7 +389,7 @@ function Report() {
 
         {/* ETAPA 3 */}
         {step === 3 && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div className="grid md:grid-cols-12 gap-4 items-start">
               <div className="md:col-span-6">
                 <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
@@ -439,10 +403,7 @@ function Report() {
               </div>
               <div className="md:col-span-6">
                 <Field label="Você já reportou isso internamente?" hint=" ">
-                  <SelectBase
-                    value={foiReportado}
-                    onChange={(e) => setFoiReportado(e.target.value)}
-                  >
+                  <SelectBase value={foiReportado} onChange={(e) => setFoiReportado(e.target.value)}>
                     <option value="nao">Não</option>
                     <option value="sim">Sim</option>
                   </SelectBase>
@@ -451,26 +412,14 @@ function Report() {
               {foiReportado === "sim" && (
                 <div className="md:col-span-12">
                   <Field label="Para quem? (opcional)" hint="Departamento, nome ou canal">
-                    <input
-                      className={inputClass}
-                      value={paraQuem}
-                      onChange={(e) => setParaQuem(e.target.value)}
-                    />
+                    <input className={inputClass} value={paraQuem} onChange={(e) => setParaQuem(e.target.value)} />
                   </Field>
                 </div>
               )}
             </div>
-
-            <div className="flex justify-between">
-              <button onClick={() => setStep(2)} className="px-3 py-2 rounded-lg border">
-                Voltar
-              </button>
-              <button
-                onClick={() => setStep(4)}
-                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
-              >
-                Próxima
-              </button>
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(2)} className={btnOutline}>Voltar</button>
+              <button onClick={() => setStep(4)} className={btnPrimary}>Próxima</button>
             </div>
           </div>
         )}
@@ -478,10 +427,7 @@ function Report() {
         {/* ETAPA 4 */}
         {step === 4 && (
           <div className="space-y-4">
-            <Field
-              label="Anexos (opcional)"
-              hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar."
-            >
+            <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
               <input
                 type="file"
                 multiple
@@ -489,7 +435,7 @@ function Report() {
                   const list = Array.from(e.target.files || []).map((f) => ({
                     name: f.name,
                     size: f.size,
-                    type: f.type, // <--- agora salvamos o tipo também
+                    type: f.type,
                   }));
                   setFiles(list);
                 }}
@@ -504,17 +450,9 @@ function Report() {
                 </ul>
               )}
             </Field>
-
-            <div className="flex justify-between">
-              <button onClick={() => setStep(3)} className="px-3 py-2 rounded-lg border">
-                Voltar
-              </button>
-              <button
-                onClick={() => setStep(5)}
-                className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
-              >
-                Próxima
-              </button>
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(3)} className={btnOutline}>Voltar</button>
+              <button onClick={() => setStep(5)} className={btnPrimary}>Próxima</button>
             </div>
           </div>
         )}
@@ -524,11 +462,7 @@ function Report() {
           <div className="space-y-4">
             <Field label="Anonimato" hint=" ">
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={anonimo}
-                  onChange={(e) => setAnonimo(e.target.checked)}
-                />
+                <input type="checkbox" checked={anonimo} onChange={(e) => setAnonimo(e.target.checked)} />
                 <span className="text-sm">Quero permanecer anônimo</span>
               </label>
             </Field>
@@ -537,44 +471,22 @@ function Report() {
               <div className="grid md:grid-cols-12 gap-4 items-start">
                 <div className="md:col-span-4">
                   <Field label="Nome" hint=" ">
-                    <input
-                      className={inputClass}
-                      value={contato.nome}
-                      onChange={(e) =>
-                        setContato({ ...contato, nome: e.target.value })
-                      }
-                    />
+                    <input className={inputClass} value={contato.nome} onChange={(e) => setContato({ ...contato, nome: e.target.value })} />
                   </Field>
                 </div>
                 <div className="md:col-span-4">
                   <Field label="Email" hint=" ">
-                    <input
-                      type="email"
-                      className={inputClass}
-                      value={contato.email}
-                      onChange={(e) =>
-                        setContato({ ...contato, email: e.target.value })
-                      }
-                    />
+                    <input type="email" className={inputClass} value={contato.email} onChange={(e) => setContato({ ...contato, email: e.target.value })} />
                   </Field>
                 </div>
                 <div className="md:col-span-4">
                   <Field label="Telefone" hint=" ">
-                    <input
-                      className={inputClass}
-                      value={contato.telefone}
-                      onChange={(e) =>
-                        setContato({ ...contato, telefone: e.target.value })
-                      }
-                    />
+                    <input className={inputClass} value={contato.telefone} onChange={(e) => setContato({ ...contato, telefone: e.target.value })} />
                   </Field>
                 </div>
                 <div className="md:col-span-4">
                   <Field label="Preferência de contato" hint=" ">
-                    <SelectBase
-                      value={prefer}
-                      onChange={(e) => setPrefer(e.target.value)}
-                    >
+                    <SelectBase value={prefer} onChange={(e) => setPrefer(e.target.value)}>
                       <option value="email">Email</option>
                       <option value="telefone">Telefone</option>
                     </SelectBase>
@@ -583,19 +495,9 @@ function Report() {
               </div>
             )}
 
-            <div className="flex justify-between">
-              <button onClick={() => setStep(4)} className="px-3 py-2 rounded-lg border">
-                Voltar
-              </button>
-              <button
-                onClick={onSubmit}
-                disabled={!canSubmit}
-                className={
-                  canSubmit
-                    ? "px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700"
-                    : "px-4 py-2 rounded-lg text-white bg-slate-300 cursor-not-allowed"
-                }
-              >
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(4)} className={btnOutline}>Voltar</button>
+              <button onClick={onSubmit} disabled={!canSubmit} className={btnPrimary}>
                 Enviar denúncia
               </button>
             </div>
@@ -607,9 +509,7 @@ function Report() {
   );
 }
 
-/* =========================================================
-   STATUS — consulta simples por protocolo
-   ========================================================= */
+/* ==================== STATUS ==================== */
 function Status() {
   const [proto, setProto] = useState("");
   const onCheck = () => {
@@ -618,26 +518,15 @@ function Status() {
     alert(achou ? `Status: ${achou.status}` : "Protocolo não encontrado.");
   };
   return (
-    <section className="space-y-6">
-      <Card className="space-y-4">
+    <section className="space-y-4 md:space-y-6">
+      <Card className="space-y-3 md:space-y-4">
         <h3 className="text-lg font-semibold">Acompanhar denúncia</h3>
         <Field label="Protocolo" hint="Digite o código recebido ao enviar a denúncia">
-          <input
-            className={inputClass}
-            value={proto}
-            onChange={(e) => setProto(e.target.value)}
-          />
+          <input className={inputClass} value={proto} onChange={(e) => setProto(e.target.value)} />
         </Field>
-        <div className="flex gap-3">
-          <button
-            onClick={onCheck}
-            className="px-4 py-2 rounded-lg bg-emerald-600 text-white"
-          >
-            Consultar
-          </button>
-          <a href="#/" className="px-4 py-2 rounded-lg border">
-            Voltar para Home
-          </a>
+        <div className="flex flex-col md:flex-row gap-2 md:gap-3">
+          <button onClick={onCheck} className={btnPrimary}>Consultar</button>
+          <a href="#/" className={btnOutline}>Voltar para Home</a>
         </div>
       </Card>
       <AvisosSeguranca />
@@ -645,14 +534,12 @@ function Status() {
   );
 }
 
-/* =========================================================
-   FAQ — conteúdo simples
-   ========================================================= */
+/* ==================== FAQ ==================== */
 function FAQ() {
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 md:space-y-6">
       <SectionTitle icon={HelpCircle} title="FAQ / Política" subtitle="Como lidamos com seus dados e sua identidade." />
-      <Card className="space-y-3">
+      <Card className="space-y-3 md:space-y-4">
         <div>
           <div className="font-semibold">Posso denunciar de forma anônima?</div>
           <div className="text-sm text-slate-600">Sim. Você pode optar pelo anonimato. Seus dados não serão coletados, e o protocolo permite acompanhar sem se identificar.</div>
@@ -675,10 +562,8 @@ function FAQ() {
   );
 }
 
-/* =========================================================
-   ADMIN — protegido por senha (sessionStorage) + anexos
-   ========================================================= */
-const ADMIN_PASS = "venture2025"; // troque aqui se quiser
+/* ==================== ADMIN protegido + mobile ==================== */
+const ADMIN_PASS = "venture2025";
 
 function AdminPanel() {
   const [q, setQ] = useState("");
@@ -743,27 +628,58 @@ function AdminPanel() {
   const lista = casos.filter(filtra);
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h3 className="text-lg font-semibold">Painel (local)</h3>
-          <div className="flex gap-2">
-            <button onClick={exportCsv} className="px-3 py-2 rounded-lg border">Exportar CSV</button>
-            <button onClick={limparTudo} className="px-3 py-2 rounded-lg border text-rose-600">Limpar tudo</button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button onClick={exportCsv} className={btnOutline}>Exportar CSV</button>
+            <button onClick={limparTudo} className={`${btnOutline} text-rose-600`}>Limpar tudo</button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <input
             className={inputClass}
             placeholder="Buscar por protocolo, unidade, categoria, descrição…"
             value={q}
             onChange={e => setQ(e.target.value)}
           />
-          <a href="#/" className="px-3 py-2 rounded-lg border">Home</a>
+          <a href="#/" className={btnOutline}>Home</a>
         </div>
 
-        <div className="overflow-auto rounded-lg border">
+        {/* Lista mobile como cards */}
+        <div className="grid md:hidden gap-3">
+          {lista.length === 0 && (
+            <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
+              Sem registros.
+            </div>
+          )}
+          {lista.map((c, i) => (
+            <div
+              key={i}
+              className="rounded-lg border p-3 bg-white"
+              onClick={() => setSel(c)}
+            >
+              <div className="flex justify-between gap-2">
+                <div className="font-mono text-sm">{c.protocolo}</div>
+                <div className="text-xs text-slate-500">
+                  {new Date(c.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+              <div className="text-sm mt-1">
+                <span className="font-medium">{c.unidade}</span> • {c.categoria}
+              </div>
+              <div className="text-xs text-slate-600 mt-1">
+                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
+              </div>
+              <div className="text-xs mt-1">Status: {c.status || "-"}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabela desktop */}
+        <div className="overflow-auto rounded-lg border hidden md:block">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left">
               <tr>
@@ -774,7 +690,7 @@ function AdminPanel() {
                 <th className="p-2 border-b">Onde</th>
                 <th className="p-2 border-b">Anon.</th>
                 <th className="p-2 border-b">Status</th>
-                <th className="p-2 border-b">Anexos</th> {/* nova coluna */}
+                <th className="p-2 border-b">Anexos</th>
               </tr>
             </thead>
             <tbody>
@@ -790,7 +706,7 @@ function AdminPanel() {
                   <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
                   <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
                   <td className="p-2 border-b">{c.status || "-"}</td>
-                  <td className="p-2 border-b">{c.anexos?.length || 0}</td> {/* contagem */}
+                  <td className="p-2 border-b">{c.anexos?.length || 0}</td>
                 </tr>
               ))}
             </tbody>
@@ -843,11 +759,9 @@ function AdminPanel() {
                 </div>
               </div>
             )}
-
           </div>
         )}
       </Card>
-
       <AvisosSeguranca />
     </section>
   );
@@ -872,7 +786,7 @@ function AdminProtected() {
   if (ok) return <AdminPanel />;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 md:space-y-6">
       <SectionTitle icon={Lock} title="Acesso restrito" subtitle="Informe a senha para acessar o painel." />
       <Card className="space-y-3 max-w-md">
         <form onSubmit={submit} className="space-y-3">
@@ -880,9 +794,9 @@ function AdminProtected() {
             <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
           {err && <div className="text-xs text-rose-600">{err}</div>}
-          <div className="flex gap-2">
-            <button className="px-4 py-2 rounded-lg bg-emerald-600 text-white">Entrar</button>
-            <a href="#/" className="px-4 py-2 rounded-lg border">Cancelar</a>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button className={btnPrimary}>Entrar</button>
+            <a href="#/" className={btnOutline}>Cancelar</a>
           </div>
         </form>
         <div className="text-xs text-slate-500">Dica: altere a constante <code>ADMIN_PASS</code> no código.</div>
@@ -891,9 +805,7 @@ function AdminProtected() {
   );
 }
 
-/* =========================================================
-   Router por hash (inclui /faq e /admin)
-   ========================================================= */
+/* ==================== Router ==================== */
 function AppRouter() {
   const [route, setRoute] = useState(window.location.hash || "#/");
 
@@ -904,7 +816,7 @@ function AppRouter() {
   }, []);
 
   return (
-    <main className="max-w-5xl mx-auto p-4 md:p-6">
+    <main className="max-w-5xl mx-auto px-3 py-4 md:p-6">
       <Nav />
       {route.startsWith("#/report") ? (
         <Report />

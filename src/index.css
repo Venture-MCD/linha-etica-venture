@@ -1,8 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ajustes globais simples */
+/* CSS mínimo do app quando usamos o CDN do Tailwind */
 :root { color-scheme: light; }
 html, body, #root { height: 100%; }
-body { background: #f8fafc; /* slate-50 */ }
+body { background:#f8fafc; }

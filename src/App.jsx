@@ -374,14 +374,33 @@ function Report() {
     // 2) Upload de anexos (cada arquivo com timeout)
     let anexosSubidos = [];
     if (files.length) {
-      try {
-        const uploaded = [];
-        for (const f of files) {
-          const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-          const path = `reports/${protocolo}/${safeName}`;
-          const url = await withTimeout(uploadFile(path, f), 30000, `upload do arquivo ${f.name}`);
-          uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
-        }
+  try {
+    const uploaded = [];
+    for (const f of files) {
+      // Limite de segurança (10 MB, pode ajustar)
+      if (f.size > 10 * 1024 * 1024) {
+        alert(`O arquivo ${f.name} excede 10 MB. Reduza ou envie outro.`);
+        continue;
+      }
+
+      const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const path = `reports/${protocolo}/${safeName}`;
+
+      // Upload com retomada automática (ideal para celular / rede fraca)
+      const url = await uploadFileResumable(path, f, (pct) => {
+        // opcional → exibir barra de progresso
+        // setUploadPct(pct);
+      });
+
+      uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+    }
+    anexosSubidos = uploaded;
+  } catch (err) {
+    console.error("Upload error:", err);
+    alert("Não foi possível enviar os anexos (tempo excedido ou permissão). Você pode tentar novamente ou enviar sem anexos.");
+    anexosSubidos = [];
+  }
+}
         anexosSubidos = uploaded;
       } catch (err) {
         console.error("Upload error:", err);

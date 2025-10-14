@@ -1,3 +1,33 @@
+// imports no topo (garanta que tenha estes):
+import { getStorage, ref as sref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+
+// ... sua inicialização existente:
+// const app = initializeApp(firebaseConfig);
+// export const storage = getStorage(app);
+
+// ✅ ADICIONE ESTA FUNÇÃO (não remova as suas atuais)
+export function uploadFileResumable(path, file, onProgress) {
+  const storageRef = sref(storage, path);
+  const metadata = { contentType: file?.type || "application/octet-stream" };
+  const task = uploadBytesResumable(storageRef, file, metadata);
+
+  return new Promise((resolve, reject) => {
+    task.on(
+      "state_changed",
+      (snap) => {
+        if (onProgress && snap.totalBytes) {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          onProgress(pct);
+        }
+      },
+      (err) => reject(err),
+      async () => {
+        const url = await getDownloadURL(task.snapshot.ref);
+        resolve(url);
+      }
+    );
+  });
+}
 // src/firebase.js
 // -------------------------------------------------------------
 // Firebase SDK - utilidades para Linha Ética Venture

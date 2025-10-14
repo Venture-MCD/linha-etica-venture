@@ -1,3 +1,11 @@
+// Helper para evitar promessas penduradas
+const withTimeout = (promise, ms, label = "operação") =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout (${label}) após ${ms}ms`)), ms)
+    ),
+  ]);
 import React, { useEffect, useState } from "react";
 import {
   FileText,
@@ -334,83 +342,95 @@ function Report() {
   };
 
   const onSubmit = async () => {
-    if (!canSubmit) {
-      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
-      return;
-    }
-    if (submitting) return;
+  if (!canSubmit) {
+    alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
+    return;
+  }
+  if (submitting) return;
 
-    const key = payloadHash();
-    const last = sessionStorage.getItem("last_submit_hash");
-    if (last && last === key) {
-      alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+  const key = payloadHash();
+  const last = sessionStorage.getItem("last_submit_hash");
+  if (last && last === key) {
+    alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+    return;
+  }
+
+  try {
+    setSubmitting(true);
+    sessionStorage.setItem("last_submit_hash", key);
+
+    // 1) Auth anônima com timeout
+    try {
+      await withTimeout(ensureAnonAuth(), 15000, "autenticação anônima");
+    } catch (e) {
+      console.error("Auth error:", e);
+      sessionStorage.removeItem("last_submit_hash");
+      alert("Falha na autenticação anônima no Firebase. Verifique se o 'Anonymous' está habilitado no Firebase Authentication.");
       return;
     }
+
+    const protocolo = genProtocolo();
+
+    // 2) Upload de anexos (cada arquivo com timeout)
+    let anexosSubidos = [];
+    if (files.length) {
+      try {
+        const uploaded = [];
+        for (const f of files) {
+          const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+          const path = `reports/${protocolo}/${safeName}`;
+          const url = await withTimeout(uploadFile(path, f), 30000, `upload do arquivo ${f.name}`);
+          uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+        }
+        anexosSubidos = uploaded;
+      } catch (err) {
+        console.error("Upload error:", err);
+        alert("Não foi possível enviar os anexos (tempo excedido ou permissão). Você pode tentar novamente ou enviar sem anexos.");
+        anexosSubidos = [];
+      }
+    }
+
+    // 3) Persistir no Firestore com timeout
+    const data = {
+      protocolo,
+      unidade,
+      categoria,
+      perguntas: {
+        periodo: { tipo: "unico", data: dataUnica },
+        periodicidade,
+        onde,
+        valorFinanceiro,
+        foiReportado,
+        paraQuem,
+      },
+      descricao: descricao.trim(),
+      anonimo,
+      contato: anonimo ? null : { ...contato, prefer },
+      anexos: anexosSubidos,
+      status: "Recebido",
+      _idempotency: key,
+    };
 
     try {
-      setSubmitting(true);
-      sessionStorage.setItem("last_submit_hash", key);
-
-      // autenticação anônima p/ regras do Storage/Firestore
-      try {
-        await ensureAnonAuth();
-      } catch (e) {
-        console.error("Anon auth error:", e);
-        alert("Falha ao iniciar sessão anônima. Tente novamente.");
-        sessionStorage.removeItem("last_submit_hash");
-        return;
-      }
-
-      const protocolo = genProtocolo();
-
-      // Upload anexos
-      let anexosSubidos = [];
-      if (files.length) {
-        try {
-          const uploaded = [];
-          for (const f of files) {
-            const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-            const path = `reports/${protocolo}/${safeName}`;
-            const url = await uploadFile(path, f);
-            uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
-          }
-          anexosSubidos = uploaded;
-        } catch (err) {
-          console.error("Upload error:", err);
-          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
-          anexosSubidos = [];
-        }
-      }
-
-      // Salva denúncia no Firestore (idempotente pelo protocolo)
-      const data = {
-        protocolo,
-        unidade,
-        categoria,
-        perguntas: {
-          periodo: { tipo: "unico", data: dataUnica },
-          periodicidade,
-          onde,
-          valorFinanceiro,
-          foiReportado,
-          paraQuem,
-        },
-        descricao: descricao.trim(),
-        anonimo,
-        contato: anonimo ? null : { ...contato, prefer },
-        anexos: anexosSubidos,
-        status: "Recebido",
-        _idempotency: key,
-      };
-
-      await createOrReplaceReport(protocolo, data);
-
-      window.location.hash = `#/status?proto=${protocolo}`;
-      alert(`Denúncia registrada. Protocolo: ${protocolo}`);
-    } finally {
-      setSubmitting(false);
+      await withTimeout(createOrReplaceReport(protocolo, data), 15000, "salvar denúncia no Firestore");
+    } catch (err) {
+      console.error("Firestore error:", err);
+      sessionStorage.removeItem("last_submit_hash");
+      alert("Falha ao salvar a denúncia no Firestore. Verifique se o Firestore está criado e as regras permitem 'auth != null'.");
+      return;
     }
-  };
+
+    // Concluir
+    window.location.hash = `#/status?proto=${protocolo}`;
+    alert(`Denúncia registrada. Protocolo: ${protocolo}`);
+  } catch (err) {
+    console.error("Erro geral no envio:", err);
+    sessionStorage.removeItem("last_submit_hash");
+    alert(`Falha no envio: ${err.message || err}`);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const StepChip = ({ n }) => {
     const active = step === n;

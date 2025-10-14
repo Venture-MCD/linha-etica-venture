@@ -5,34 +5,34 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# ✅ apenas UM bloco concurrency
-concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# ⚠️ Garante que só 1 deploy rode por vez e cancela o anterior
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Use Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # Instala dependências (usa package.json; não exige package-lock)
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Build
         run: npm run build
 
-      # Sobe a pasta dist como artefato para o Pages
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

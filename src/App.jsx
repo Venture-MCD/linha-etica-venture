@@ -12,7 +12,16 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import ventureLogo from "./logo-venture.jpeg";
-import { ensureAnonAuth, uploadFile } from "./firebase";
+
+import {
+  ensureAnonAuth,
+  uploadFile,
+  createOrReplaceReport,
+  getReportByProtocol,
+  subscribeReports,
+  updateReport,
+  addAdminNote,
+} from "./firebase";
 
 /* ==================== Config & Consts ==================== */
 const POLICY_VERSION = "1.0";
@@ -110,6 +119,7 @@ const Nav = () => {
           <a href="#/status" className="text-sm text-emerald-700 hover:underline">Acompanhar</a>
           <a href="#/faq" className="text-sm text-emerald-700 hover:underline">FAQ</a>
           <a href="#/termos" className="text-sm text-emerald-700 hover:underline">Política de Uso</a>
+          <a href="#/admin" className="text-sm text-emerald-700 hover:underline">Admin</a>
         </div>
         <button
           className="md:hidden p-2 rounded-lg border"
@@ -125,6 +135,7 @@ const Nav = () => {
           <a href="#/status" className="px-3 py-2 rounded-lg border">Acompanhar</a>
           <a href="#/faq" className="px-3 py-2 rounded-lg border">FAQ</a>
           <a href="#/termos" className="px-3 py-2 rounded-lg border">Política de Uso</a>
+          <a href="#/admin" className="px-3 py-2 rounded-lg border">Admin</a>
         </div>
       )}
     </nav>
@@ -134,12 +145,10 @@ const Nav = () => {
 /* ==================== Dados & Utils ==================== */
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
 const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
-const loadCasos = () => JSON.parse(localStorage.getItem("casos") || "[]");
-const saveCasos = (casos) => localStorage.setItem("casos", JSON.stringify(casos));
 const genProtocolo = () => Math.random().toString(36).substring(2, 10).toUpperCase();
 const AvisosSeguranca = () => (
   <div className="text-xs text-slate-500">
-    ⚠️ Protótipo: os dados ficam no navegador local (exceto anexos no Storage). Para produção, use backend seguro.
+    ⚠️ Protótipo: dados operacionais na nuvem (Firestore/Storage). Ajuste regras antes de produção.
   </div>
 );
 
@@ -225,13 +234,11 @@ function Termos() {
       />
       <Card className="space-y-4">
         <div className="text-sm text-slate-700 space-y-3 max-h-[55vh] overflow-auto pr-1">
-          <p><strong>Objetivo.</strong> Este canal foi criado para que colaboradores, terceiros e demais partes interessadas relatem, de boa-fé, suspeitas de irregularidades, condutas inadequadas, violações de políticas internas ou leis aplicáveis.</p>
-          <p><strong>Anonimato e Identificação.</strong> Você pode registrar a denúncia de forma anônima ou identificada. Ao optar por se identificar, seus dados de contato serão utilizados exclusivamente para retorno sobre o caso.</p>
-          <p><strong>Coleta e Tratamento de Dados (LGPD).</strong> Coletamos apenas as informações necessárias para apurar o fato: dados da denúncia, eventuais anexos, e, se fornecidos, dados de contato. O tratamento respeita os princípios da LGPD.</p>
-          <p><strong>Confidencialidade.</strong> O conteúdo da denúncia é confidencial e acessado exclusivamente por pessoas autorizadas.</p>
-          <p><strong>Boas-fé e Uso Responsável.</strong> É vedado o uso do canal para acusações sabidamente falsas, ofensas, conteúdos discriminatórios ou divulgação de informações sigilosas sem relação com a denúncia.</p>
-          <p><strong>Escopo do Protótipo.</strong> Esta versão armazena dados no seu próprio navegador (localStorage) e envia anexos ao Storage configurado. Para produção, será implementado backend seguro.</p>
-          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política de Uso.</p>
+          <p><strong>Objetivo.</strong> Canal para que colaboradores e terceiros relatem, de boa-fé, suspeitas de irregularidades ou violações.</p>
+          <p><strong>Anonimato.</strong> Você pode denunciar de forma anônima ou identificada.</p>
+          <p><strong>LGPD.</strong> Tratamento apenas do necessário, com base legal adequada e acesso restrito aos autorizados.</p>
+          <p><strong>Escopo do protótipo.</strong> Denúncias salvas no Firestore; anexos no Storage.</p>
+          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política.</p>
         </div>
 
         <label className="flex items-start gap-2">
@@ -241,9 +248,7 @@ function Termos() {
             checked={agree}
             onChange={(e) => setAgree(e.target.checked)}
           />
-          <span className="text-sm">
-            Li e concordo com os termos e a Política de Uso da Linha Ética.
-          </span>
+          <span className="text-sm">Li e concordo com os termos e a Política de Uso.</span>
         </label>
 
         <div className="flex flex-col sm:flex-row gap-2">
@@ -285,7 +290,6 @@ function Report() {
   // anti duplicação
   const [submitting, setSubmitting] = useState(false);
 
-  // exige aceite de termos
   useEffect(() => {
     if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
       window.location.hash = "#/termos";
@@ -347,17 +351,19 @@ function Report() {
       setSubmitting(true);
       sessionStorage.setItem("last_submit_hash", key);
 
+      // autenticação anônima p/ regras do Storage/Firestore
       try {
         await ensureAnonAuth();
-    } catch (e) {
+      } catch (e) {
         console.error("Anon auth error:", e);
-        alert("Falha ao iniciar sessão anônima para enviar anexos. Tente novamente.");
+        alert("Falha ao iniciar sessão anônima. Tente novamente.");
         sessionStorage.removeItem("last_submit_hash");
         return;
       }
 
       const protocolo = genProtocolo();
 
+      // Upload anexos
       let anexosSubidos = [];
       if (files.length) {
         try {
@@ -376,10 +382,9 @@ function Report() {
         }
       }
 
-      const casos = loadCasos();
-      const novo = {
+      // Salva denúncia no Firestore (idempotente pelo protocolo)
+      const data = {
         protocolo,
-        createdAt: new Date().toISOString(),
         unidade,
         categoria,
         perguntas: {
@@ -397,7 +402,8 @@ function Report() {
         status: "Recebido",
         _idempotency: key,
       };
-      saveCasos([novo, ...casos]);
+
+      await createOrReplaceReport(protocolo, data);
 
       window.location.hash = `#/status?proto=${protocolo}`;
       alert(`Denúncia registrada. Protocolo: ${protocolo}`);
@@ -655,11 +661,22 @@ function Report() {
 /* ==================== STATUS ==================== */
 function Status() {
   const [proto, setProto] = useState("");
-  const onCheck = () => {
-    const casos = loadCasos();
-    const achou = casos.find((c) => c.protocolo === proto.trim());
-    alert(achou ? `Status: ${achou.status}` : "Protocolo não encontrado.");
+
+  const onCheck = async () => {
+    if (!proto.trim()) return;
+    const res = await getReportByProtocol(proto.trim());
+    if (!res) {
+      alert("Protocolo não encontrado.");
+      return;
+    }
+    const status = res.status || "-";
+    const ult = (res.notes || []).slice(-1)[0];
+    alert(
+      `Status: ${status}` +
+        (ult ? `\nÚltima atualização: ${ult.text || ""}` : "")
+    );
   };
+
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3 md:space-y-4">
@@ -705,118 +722,66 @@ function FAQ() {
   );
 }
 
-/* ==================== ADMIN (painel) ==================== */
+/* ==================== ADMIN (com Firestore) ==================== */
 function AdminPanel() {
   const [q, setQ] = useState("");
-  const [casos, setCasos] = useState(loadCasos());
+  const [lista, setLista] = useState([]);
   const [sel, setSel] = useState(null);
 
+  // Assina Firestore
   useEffect(() => {
-    const onFocus = () => setCasos(loadCasos());
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    const unsub = subscribeReports((arr) => setLista(arr));
+    return () => unsub && unsub();
   }, []);
 
-  const filtra = (c) => {
+  const filtro = (c) => {
     if (!q.trim()) return true;
     const s = q.toLowerCase();
     return (
-      c.protocolo?.toLowerCase().includes(s) ||
-      c.unidade?.toLowerCase().includes(s) ||
-      c.categoria?.toLowerCase().includes(s) ||
+      c.id?.toLowerCase().includes(s) ||
+      c.protocolo?.toLowerCase?.().includes(s) ||
+      c.unidade?.toLowerCase?.().includes(s) ||
+      c.categoria?.toLowerCase?.().includes(s) ||
       c.perguntas?.onde?.toLowerCase?.().includes(s) ||
-      c.descricao?.toLowerCase().includes(s)
+      c.descricao?.toLowerCase?.().includes(s)
     );
   };
 
-  const lista = casos.filter(filtra);
+  const filtered = lista.filter(filtro);
 
-  const exportCsv = () => {
-    const rows = [
-      [
-        "protocolo",
-        "createdAt",
-        "unidade",
-        "categoria",
-        "onde",
-        "data",
-        "periodicidade",
-        "impactoFinanceiro",
-        "foiReportado",
-        "paraQuem",
-        "anonimo",
-        "contato",
-        "status",
-        "descricao",
-        "qtdAnexos",
-        "links",
-      ],
-    ];
-    for (const c of lista) {
-      rows.push([
-        c.protocolo || "",
-        c.createdAt || "",
-        c.unidade || "",
-        c.categoria || "",
-        c.perguntas?.onde || "",
-        c.perguntas?.periodo?.data || "",
-        c.perguntas?.periodicidade || "",
-        c.perguntas?.valorFinanceiro || "",
-        c.perguntas?.foiReportado || "",
-        c.perguntas?.paraQuem || "",
-        c.anonimo ? "sim" : "não",
-        c.anonimo ? "" : JSON.stringify(c.contato || {}),
-        c.status || "",
-        (c.descricao || "").replace(/\n/g, " "),
-        (c.anexos?.length || 0).toString(),
-        (c.anexos || [])
-          .map((a) => a.url)
-          .filter(Boolean)
-          .join(" | "),
-      ]);
+  const [novoStatus, setNovoStatus] = useState("Recebido");
+  const [resposta, setResposta] = useState("");
+
+  useEffect(() => {
+    if (sel) {
+      setNovoStatus(sel.status || "Recebido");
+      setResposta("");
     }
-    const csv = rows
-      .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "denuncias.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  }, [sel]);
+
+  const salvarStatus = async () => {
+    if (!sel) return;
+    await updateReport(sel.id, { status: novoStatus });
+    alert("Status atualizado.");
   };
 
-  const limparTudo = () => {
-    if (!confirm("Apagar todos os registros locais?")) return;
-    localStorage.removeItem("casos");
-    setCasos([]);
-    setSel(null);
-  };
-
-  const abrirAnexosSelecionado = () => {
-    if (!sel?.anexos?.length) return;
-    const links = sel.anexos.filter((f) => !!f.url);
-    if (!links.length) {
-      alert("Este registro não possui links (provavelmente é anterior ao upload em nuvem).");
-      return;
-    }
-    links.forEach((f) => window.open(f.url, "_blank", "noopener,noreferrer"));
+  const enviarResposta = async () => {
+    if (!sel || !resposta.trim()) return;
+    await addAdminNote(sel.id, {
+      at: new Date().toISOString(),
+      text: resposta.trim(),
+      by: "Admin",
+    });
+    setResposta("");
+    alert("Resposta adicionada ao histórico.");
   };
 
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <h3 className="text-lg font-semibold">Painel (local)</h3>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button onClick={exportCsv} className={btnOutline}>
-              Exportar CSV
-            </button>
-            <button onClick={limparTudo} className={`${btnOutline} text-rose-600`}>
-              Limpar tudo
-            </button>
-          </div>
+          <h3 className="text-lg font-semibold">Painel (Firestore)</h3>
+          <div className="text-xs text-slate-500">Registros em tempo real</div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -833,32 +798,28 @@ function AdminPanel() {
 
         {/* Lista MOBILE */}
         <div className="grid md:hidden gap-3">
-          {lista.length === 0 && (
+          {filtered.length === 0 && (
             <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
               Sem registros.
             </div>
           )}
-          {lista.map((c, i) => (
+          {filtered.map((c) => (
             <div
-              key={i}
+              key={c.id}
               className="rounded-lg border p-3 bg-white"
               onClick={() => setSel(c)}
               role="button"
             >
               <div className="flex justify-between gap-2">
-                <div className="font-mono text-sm">{c.protocolo}</div>
-                <div className="text-xs text-slate-500">
-                  {new Date(c.createdAt).toLocaleDateString()}
-                </div>
+                <div className="font-mono text-sm">{c.id}</div>
+                <div className="text-xs text-slate-500">{c.status || "-"}</div>
               </div>
               <div className="text-sm mt-1">
                 <span className="font-medium">{c.unidade}</span> • {c.categoria}
               </div>
               <div className="text-xs text-slate-600 mt-1">
-                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} •{" "}
-                {c.anonimo ? "Anônimo" : "Identificado"}
+                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
               </div>
-              <div className="text-xs mt-1">Status: {c.status || "-"}</div>
             </div>
           ))}
         </div>
@@ -869,7 +830,6 @@ function AdminPanel() {
             <thead className="bg-slate-50 text-left">
               <tr>
                 <th className="p-2 border-b">Protocolo</th>
-                <th className="p-2 border-b">Data</th>
                 <th className="p-2 border-b">Unidade</th>
                 <th className="p-2 border-b">Categoria</th>
                 <th className="p-2 border-b">Onde</th>
@@ -879,21 +839,20 @@ function AdminPanel() {
               </tr>
             </thead>
             <tbody>
-              {lista.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-3 text-center text-slate-500">
+                  <td colSpan={7} className="p-3 text-center text-slate-500">
                     Sem registros.
                   </td>
                 </tr>
               )}
-              {lista.map((c, i) => (
+              {filtered.map((c) => (
                 <tr
-                  key={i}
+                  key={c.id}
                   className="hover:bg-slate-50 cursor-pointer"
                   onClick={() => setSel(c)}
                 >
-                  <td className="p-2 border-b font-mono">{c.protocolo}</td>
-                  <td className="p-2 border-b">{new Date(c.createdAt).toLocaleString()}</td>
+                  <td className="p-2 border-b font-mono">{c.id}</td>
                   <td className="p-2 border-b">{c.unidade}</td>
                   <td className="p-2 border-b">{c.categoria}</td>
                   <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
@@ -906,26 +865,17 @@ function AdminPanel() {
           </table>
         </div>
 
-        {/* Detalhes do selecionado */}
+        {/* Detalhes */}
         {sel && (
           <div className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm text-slate-500">Protocolo</div>
-                <div className="font-mono font-semibold">{sel.protocolo}</div>
+                <div className="font-mono font-semibold">{sel.id}</div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className={`${btnOutline} disabled:opacity-50`}
-                  onClick={abrirAnexosSelecionado}
-                  disabled={!(sel.anexos || []).some((a) => a.url)}
-                >
-                  Abrir anexos
-                </button>
-                <button className="text-sm underline" onClick={() => setSel(null)}>
-                  fechar
-                </button>
-              </div>
+              <button className="text-sm underline" onClick={() => setSel(null)}>
+                fechar
+              </button>
             </div>
 
             <div className="grid md:grid-cols-2 gap-3 mt-2">
@@ -1006,9 +956,46 @@ function AdminPanel() {
                     ))}
                   </ul>
                 )}
-                <div className="text-xs text-slate-500 mt-1">
-                  Obs.: Registros antigos podem não ter link. Novos envios já exibem o link.
-                </div>
+              </div>
+            )}
+
+            {/* Ações admin */}
+            <div className="mt-4 grid md:grid-cols-2 gap-3">
+              <Card className="space-y-2">
+                <div className="font-medium">Alterar status</div>
+                <SelectBase value={novoStatus} onChange={(e) => setNovoStatus(e.target.value)}>
+                  <option>Recebido</option>
+                  <option>Em análise</option>
+                  <option>Em contato</option>
+                  <option>Concluído</option>
+                </SelectBase>
+                <button onClick={salvarStatus} className={btnPrimary}>Salvar status</button>
+              </Card>
+
+              <Card className="space-y-2">
+                <div className="font-medium">Adicionar resposta / comentário</div>
+                <textarea
+                  className="w-full rounded-lg border p-3 min-h-[100px]"
+                  value={resposta}
+                  onChange={(e) => setResposta(e.target.value)}
+                  placeholder="Mensagem para histórico (visível no acompanhamento)"
+                />
+                <button onClick={enviarResposta} className={btnPrimary}>Salvar resposta</button>
+              </Card>
+            </div>
+
+            {/* Histórico de respostas */}
+            {!!(sel.notes?.length) && (
+              <div className="mt-4">
+                <div className="text-xs text-slate-500 mb-1">Histórico</div>
+                <ul className="space-y-2">
+                  {sel.notes.map((n, idx) => (
+                    <li key={idx} className="rounded border p-2 bg-white">
+                      <div className="text-xs text-slate-500">{n.at} — {n.by || "Admin"}</div>
+                      <div className="whitespace-pre-wrap">{n.text}</div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -1046,13 +1033,12 @@ function AdminProtected() {
           <Field label="Senha" hint="Contato: compliance/ética">
             <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
-          {err && <div className="text-xs text-rose-600">{err}</div>}
+        {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
             <a href="#/" className={btnOutline}>Cancelar</a>
           </div>
         </form>
-        <div className="text-xs text-slate-500">Dica: altere a constante <code>ADMIN_PASS</code> no código.</div>
       </Card>
     </section>
   );

@@ -85,6 +85,12 @@ const Field = ({ label, hint, children }) => (
 );
 
 const NavBar = () => {
+  // no topo do arquivo:
+const base = import.meta.env.BASE_URL || "/";
+const logoUrl = new URL("logo-venture.png", base).href;
+
+// onde está o <img ... />
+<img src={logoUrl} alt="Venture" className="h-6 w-auto" />
   const [open, setOpen] = useState(false);
   const link = (hash, label) => (
     <a

@@ -1,15 +1,6 @@
-// src/firebase.js
-// -------------------------------------------------------------
-// Firebase SDK - utilidades para Linha Ética Venture
-// - Inicialização do app
-// - Autenticação anônima
-// - Upload Resumable (robusto p/ celular)
-// - Firestore: criar/ler/atualizar denúncia, subscription em tempo real
-// - Notas/respostas do Admin (subcoleção)
-// Requer .env(.production) com:
-// VITE_FB_API_KEY, VITE_FB_AUTH_DOMAIN, VITE_FB_PROJECT_ID,
-// VITE_FB_STORAGE_BUCKET (ex.: meu-projeto.appspot.com), VITE_FB_APP_ID
-// -------------------------------------------------------------
+// Firebase SDK v11 (modular)
+// Funções expostas: ensureAnonAuth, uploadFile, createOrReplaceReport, getReportByProtocol,
+// subscribeReports, updateReport, addAdminNote
 
 import { initializeApp, getApps } from "firebase/app";
 import {
@@ -22,168 +13,170 @@ import {
   doc,
   setDoc,
   getDoc,
-  onSnapshot,
   updateDoc,
-  serverTimestamp,
   collection,
-  addDoc,
+  onSnapshot,
   query,
   orderBy,
+  serverTimestamp,
+  arrayUnion,
 } from "firebase/firestore";
 import {
   getStorage,
   ref as sref,
-  uploadBytesResumable,
   uploadBytes,
   getDownloadURL,
 } from "firebase/storage";
 
-// ----------------------------------------------------------------------------
-// Inicialização (evita duplicar instância em HMR/build)
-// ----------------------------------------------------------------------------
+/* ===================== Init ===================== */
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FB_API_KEY,
-  authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FB_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FB_STORAGE_BUCKET, // ex.: meu-projeto.appspot.com
-  appId: import.meta.env.VITE_FB_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
 };
 
+// Evita reinit em ambiente hot-reload
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-// ----------------------------------------------------------------------------
-// Auth anônima (para regras `request.auth != null`)
-// ----------------------------------------------------------------------------
-export function ensureAnonAuth() {
-  return new Promise((resolve, reject) => {
-    const unsub = onAuthStateChanged(
-      auth,
-      async (user) => {
-        if (user) {
-          unsub();
-          resolve(user);
-        } else {
-          try {
-            const cred = await signInAnonymously(auth);
-            unsub();
-            resolve(cred.user);
-          } catch (err) {
-            unsub();
-            reject(err);
-          }
-        }
-      },
-      (err) => {
-        unsub();
-        reject(err);
-      }
-    );
-  });
+/* ===================== Utils internos ===================== */
+
+// Pequeno helper de timeout para operações assíncronas
+function withTimeout(promise, ms, label = "operação") {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) =>
+      setTimeout(() => rej(new Error(`Timeout ao tentar ${label} (${ms}ms)`)), ms)
+    ),
+  ]);
 }
 
-// ----------------------------------------------------------------------------
-// Upload de arquivo: versão RESUMABLE (recomendada)
-// ----------------------------------------------------------------------------
+/* ===================== API exposta ===================== */
+
 /**
- * Upload com retomada automática (melhor em 4G/iOS).
- * @param {string} path ex.: "reports/PROTOCOLO/arquivo.jpg"
- * @param {File|Blob} file
- * @param {(percent:number)=>void} [onProgress]
- * @returns {Promise<string>} downloadURL público
+ * Garante que há um usuário anônimo autenticado (necessário para regras de Security).
+ * Retorna o user atual.
  */
-export function uploadFileResumable(path, file, onProgress) {
-  const storageRef = sref(storage, path);
-  const metadata = { contentType: file?.type || "application/octet-stream" };
-  const task = uploadBytesResumable(storageRef, file, metadata);
+export async function ensureAnonAuth() {
+  const u = auth.currentUser;
+  if (u) return u;
 
-  return new Promise((resolve, reject) => {
-    task.on(
-      "state_changed",
-      (snap) => {
-        if (onProgress && snap.totalBytes) {
-          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-          onProgress(pct);
-        }
-      },
-      (err) => reject(err),
-      async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        resolve(url);
-      }
-    );
+  // Espera brevemente por um usuário que talvez já esteja sendo autenticado
+  const maybeUser = await new Promise((resolve) => {
+    const unsub = onAuthStateChanged(auth, (usr) => {
+      unsub();
+      resolve(usr || null);
+    });
+    // timeout curto
+    setTimeout(() => {
+      try { unsub(); } catch {}
+      resolve(null);
+    }, 1000);
   });
+  if (maybeUser) return maybeUser;
+
+  // Se ainda não houver, autentica anonimamente
+  const cred = await signInAnonymously(auth);
+  return cred.user;
 }
 
-// (Opcional) Upload simples – mantido para compatibilidade
+/**
+ * Faz upload de um arquivo para o Storage.
+ * @param {string} path caminho completo (ex.: reports/PROTOCOLO/nome.ext)
+ * @param {File|Blob} file
+ * @returns {Promise<string>} URL de download pública
+ */
 export async function uploadFile(path, file) {
-  const storageRef = sref(storage, path);
-  const metadata = { contentType: file?.type || "application/octet-stream" };
-  await uploadBytes(storageRef, file, metadata);
-  return getDownloadURL(storageRef);
+  const r = sref(storage, path);
+  await uploadBytes(r, file);
+  const url = await getDownloadURL(r);
+  return url;
 }
 
-// ----------------------------------------------------------------------------
-// Firestore - Denúncias
-// ----------------------------------------------------------------------------
+/**
+ * Cria ou substitui (merge) o report com ID = protocolo.
+ * @param {string} protocolo
+ * @param {object} data
+ */
 export async function createOrReplaceReport(protocolo, data) {
   const ref = doc(db, "reports", protocolo);
   const payload = {
     ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    // Garante createdAt (server) se não veio do App.jsx:
+    createdAt: data.createdAt || serverTimestamp(),
   };
   await setDoc(ref, payload, { merge: true });
 }
 
-export async function updateReport(protocolo, partial) {
-  const ref = doc(db, "reports", protocolo);
-  await updateDoc(ref, { ...partial, updatedAt: serverTimestamp() });
-}
-
+/**
+ * Busca um report pelo protocolo (ID do documento).
+ * @param {string} protocolo
+ * @returns {Promise<object|null>}
+ */
 export async function getReportByProtocol(protocolo) {
   const ref = doc(db, "reports", protocolo);
   const snap = await getDoc(ref);
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
 }
 
+/**
+ * Assina a coleção de reports em tempo real (para o Admin).
+ * Ordena por createdAt desc se possível; se não, assina sem ordenação.
+ * @param {(arr: any[]) => void} callback
+ * @returns {() => void} unsubscribe
+ */
 export function subscribeReports(callback) {
-  const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snapshot) => {
-    const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-    callback(list);
+  try {
+    const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (ss) => {
+      const arr = ss.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback(arr);
+    });
+  } catch (e) {
+    // Fallback sem orderBy se o campo ainda não existir
+    console.warn("subscribeReports: fallback sem orderBy(createdAt)", e);
+    const col = collection(db, "reports");
+    return onSnapshot(col, (ss) => {
+      const arr = ss.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Ordena no cliente por createdAt (serverTimestamp pode ser null nos primeiros ms)
+      arr.sort((a, b) => {
+        const ta = a.createdAt?.seconds || 0;
+        const tb = b.createdAt?.seconds || 0;
+        return tb - ta;
+      });
+      callback(arr);
+    });
+  }
+}
+
+/**
+ * Atualiza campos de um report.
+ * @param {string} id (protocolo)
+ * @param {object} fields
+ */
+export async function updateReport(id, fields) {
+  const ref = doc(db, "reports", id);
+  await updateDoc(ref, fields);
+}
+
+/**
+ * Adiciona uma nota do admin no array "notes".
+ * note: { at: string, text: string, by?: string }
+ */
+export async function addAdminNote(id, note) {
+  const ref = doc(db, "reports", id);
+  await updateDoc(ref, {
+    notes: arrayUnion(note),
   });
 }
 
-// ----------------------------------------------------------------------------
-export async function addAdminNote(protocolo, author, message) {
-  const notesRef = collection(db, "reports", protocolo, "adminNotes");
-  await addDoc(notesRef, { author, message, createdAt: serverTimestamp() });
-}
-
-export function subscribeAdminNotes(protocolo, callback) {
-  const notesRef = collection(db, "reports", protocolo, "adminNotes");
-  const q = query(notesRef, orderBy("createdAt", "asc"));
-  return onSnapshot(q, (snap) => {
-    const notes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    callback(notes);
-  });
-}
-
-// ----------------------------------------------------------------------------
-// Debug helper
-// ----------------------------------------------------------------------------
-export function getRuntimeFirebaseInfo() {
-  return {
-    projectId: firebaseConfig.projectId,
-    storageBucket: firebaseConfig.storageBucket,
-    authDomain: firebaseConfig.authDomain,
-    appId: firebaseConfig.appId,
-    currentUser: auth.currentUser
-      ? { uid: auth.currentUser.uid, isAnonymous: auth.currentUser.isAnonymous }
-      : null,
-  };
-}
+/* ===================== Exporta clientes (se precisar) ===================== */
+export { app, auth, db, storage };

@@ -2,3 +2,30 @@
 :root { color-scheme: light; }
 html, body, #root { height: 100%; }
 body { background:#f8fafc; }
+/* --- Normalização leve para campos (não altera seu layout) --- */
+
+/* Deixa select com exatamente 40px (h-10) e padding igual ao input */
+select.h-10 {
+  height: 2.5rem;          /* 40px */
+  padding-top: 0.5rem;     /* p-2 */
+  padding-bottom: 0.5rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Evita “pular” a altura no iOS/Safari */
+input.h-10, textarea, select.h-10 {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Quebra textos longos (descrição no admin, status, etc.) */
+.break-words {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Em telas pequenas, garante 100% de largura nos campos do grid */
+@media (max-width: 768px) {
+  .field-full { width: 100%; }
+}

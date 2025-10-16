@@ -1,21 +1,24 @@
 // src/firebase.js
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import {
   getAuth,
+  onAuthStateChanged,
   signInAnonymously,
 } from "firebase/auth";
+
 import {
   getFirestore,
   doc,
   setDoc,
   getDoc,
   onSnapshot,
-  updateDoc,
-  serverTimestamp,
   collection,
   query,
   orderBy,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
+
 import {
   getStorage,
   ref as sref,
@@ -23,147 +26,143 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-/**
- * 1) Tenta .env (Vite) -> 2) Fallback hardcoded (garante funcionar agora)
- */
-const cfgFromEnv = {
-  apiKey:
-    import.meta?.env?.VITE_FB_API_KEY ||
-    import.meta?.env?.VITE_FIREBASE_API_KEY ||
-    "",
-  authDomain:
-    import.meta?.env?.VITE_FB_AUTH_DOMAIN ||
-    import.meta?.env?.VITE_FIREBASE_AUTH_DOMAIN ||
-    "",
-  projectId:
-    import.meta?.env?.VITE_FB_PROJECT_ID ||
-    import.meta?.env?.VITE_FIREBASE_PROJECT_ID ||
-    "",
-  storageBucket:
-    import.meta?.env?.VITE_FB_STORAGE_BUCKET ||
-    import.meta?.env?.VITE_FIREBASE_STORAGE_BUCKET ||
-    "",
-  appId:
-    import.meta?.env?.VITE_FB_APP_ID ||
-    import.meta?.env?.VITE_FIREBASE_APP_ID ||
-    "",
+/* ========= Ler variáveis do .env =========
+   (lembre: nomes começam com VITE_ para o Vite injetar no build)
+*/
+const firebaseConfig = {
+  apiKey:            import.meta.env.VITE_FB_API_KEY,
+  authDomain:        import.meta.env.VITE_FB_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FB_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FB_STORAGE_BUCKET,
+  appId:             import.meta.env.VITE_FB_APP_ID,
+  // measurementId é opcional
 };
 
-// >>> Fallback com os valores que você me passou (usa se algo do env vier vazio)
-const cfgHardcoded = {
-  apiKey: "AIzaSyBWDz3tO9Q4AS8CxdQCjZ74eAT6ljFuj3A",
-  authDomain: "linha-etica-venture.firebaseapp.com",
-  projectId: "linha-etica-venture",
-  storageBucket: "linha-etica-venture.appspot.com",
-  appId: "1:790882253555:web:33f0bb792922d7a313d586",
-};
-
-const FIREBASE_CONFIG = Object.values(cfgFromEnv).every(Boolean)
-  ? cfgFromEnv
-  : cfgHardcoded;
-
-// Log leve para diagnosticar (mostra só se veio do env ou do fallback)
-if (import.meta.env?.MODE !== "production") {
-  console.log(
-    "[firebase] usando",
-    Object.values(cfgFromEnv).every(Boolean) ? ".env" : "fallback hardcoded"
-  );
-}
-
-const app = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
+const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+const db   = getFirestore(app);
+const st   = getStorage(app);
 
-/* ---------------------- Auth anônima ---------------------- */
-export async function ensureAnonAuth() {
-  if (auth.currentUser) return auth.currentUser;
-  const res = await signInAnonymously(auth); // precisa das regras auth != null
-  return res.user;
-}
-
-/* ---------------------- Storage --------------------------- */
-export async function uploadFile(path, file) {
-  // path exemplo: reports/PROTOCOLO/arquivo.ext
-  const r = sref(storage, path);
-  const task = uploadBytesResumable(r, file);
-  await new Promise((resolve, reject) => {
-    task.on(
-      "state_changed",
-      // progresso opcional:
-      // (snap) => console.log("upload", (snap.bytesTransferred / snap.totalBytes) * 100, "%"),
-      () => {},
-      reject,
-      resolve
+/* ========= Helpers ========= */
+function withTimeout(promise, ms, label = "operation") {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timeout em ${label} após ${ms}ms`)), ms);
+    promise.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
     );
   });
-  const url = await getDownloadURL(task.snapshot.ref);
-  return url;
 }
 
-/* ---------------------- Firestore ------------------------- */
-const COL = "reports";
+/* ========= Auth Anônima ========= */
+export async function ensureAnonAuth() {
+  // se já houver auth, ok
+  const user = auth.currentUser;
+  if (user) return user;
 
-/**
- * Cria ou substitui a denúncia (id por protocolo) — idempotente.
- */
+  // aguarda um ciclo de onAuthStateChanged (resolve rápido)
+  const gotUser = new Promise((resolve) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        unsub();
+        resolve(u);
+      }
+    });
+  });
+
+  try {
+    // dispara login anônimo; se já estiver logado, onAuthStateChanged acima resolve
+    await signInAnonymously(auth);
+  } catch (e) {
+    // se falhar, pode ser “auth/operation-not-allowed”: habilite “Anonymous” no Firebase Auth
+    console.error("Falha ao autenticar anonimamente:", e);
+    throw e;
+  }
+
+  return gotUser;
+}
+
+/* ========= Storage (upload) ========= */
+export async function uploadFile(path, file, { timeoutMs = 30000 } = {}) {
+  // garante auth válido para regras request.auth != null
+  await ensureAnonAuth();
+
+  const r = sref(st, path);
+  const task = uploadBytesResumable(r, file, {
+    // metadados opcionais
+    contentType: file.type || "application/octet-stream",
+  });
+
+  const done = new Promise((resolve, reject) => {
+    task.on(
+      "state_changed",
+      // onProgress (opcional) => (snap) => { ... }
+      null,
+      (err) => reject(err),
+      async () => {
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve({ url, fullPath: task.snapshot.ref.fullPath });
+        } catch (e) {
+          reject(e);
+        }
+      }
+    );
+  });
+
+  try {
+    return await withTimeout(done, timeoutMs, "upload");
+  } catch (e) {
+    console.error("[upload] erro:", e);
+    throw e;
+  }
+}
+
+/* ========= Firestore ========= */
 export async function createOrReplaceReport(protocolo, data) {
-  const ref = doc(db, COL, protocolo);
-  await setDoc(ref, { ...data, createdAt: serverTimestamp() }, { merge: true });
+  await ensureAnonAuth();
+  const ref = doc(db, "reports", protocolo);
+  const payload = {
+    ...data,
+    createdAt: data.createdAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(ref, payload, { merge: true });
+  return protocolo;
 }
 
-/**
- * Pega denúncia por protocolo
- */
 export async function getReportByProtocol(protocolo) {
-  const ref = doc(db, COL, protocolo);
+  const ref = doc(db, "reports", protocolo);
   const snap = await getDoc(ref);
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-/**
- * Assina a coleção (ordenando por createdAt quando possível)
- */
 export function subscribeReports(cb) {
-  try {
-    const q = query(collection(db, COL), orderBy("createdAt", "desc"));
-    return onSnapshot(
-      q,
-      (ss) => cb(ss.docs.map((d) => ({ id: d.id, ...d.data() }))),
-      (err) => {
-        console.error("onSnapshot error:", err);
-        cb([]);
-      }
-    );
-  } catch (_) {
-    // se ainda não houver índice/ordenação, cai no fallback simples
-    return onSnapshot(
-      collection(db, COL),
-      (ss) => cb(ss.docs.map((d) => ({ id: d.id, ...d.data() }))),
-      (err) => {
-        console.error("onSnapshot error (fallback):", err);
-        cb([]);
-      }
-    );
-  }
+  // ordena por createdAt quando existir
+  const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
+  const unsub = onSnapshot(q, (snap) => {
+    const rows = [];
+    snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+    cb(rows);
+  });
+  return unsub;
 }
 
-/**
- * Atualiza denúncia (ex.: status)
- */
-export async function updateReport(id, patch) {
-  const ref = doc(db, COL, id);
-  await updateDoc(ref, { ...patch, updatedAt: serverTimestamp() });
+export async function updateReport(id, partial) {
+  const ref = doc(db, "reports", id);
+  await updateDoc(ref, { ...partial, updatedAt: serverTimestamp() });
 }
 
-/**
- * Adiciona uma nota/admin reply (apêndice em array "notes")
- */
 export async function addAdminNote(id, note) {
-  const ref = doc(db, COL, id);
-  const current = await getDoc(ref);
-  const prev = current.exists() ? current.data() : {};
-  const notes = Array.isArray(prev.notes) ? prev.notes.slice() : [];
-  notes.push(note);
+  const ref = doc(db, "reports", id);
+  const snap = await getDoc(ref);
+
+  const cur = snap.exists() ? snap.data() : {};
+  const prevNotes = Array.isArray(cur.notes) ? cur.notes : [];
+  const notes = [...prevNotes, note];
+
   await updateDoc(ref, { notes, updatedAt: serverTimestamp() });
 }
+
+/* ========= Exports “brutos” (se precisar) ========= */
+export { app, auth, db, st };

@@ -11,10 +11,7 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL || "/";
-const logoUrl = `${BASE}logo-venture.png`; // ou .jpg
-
+import ventureLogo from "./logo-venture.png";
 
 import {
   ensureAnonAuth,

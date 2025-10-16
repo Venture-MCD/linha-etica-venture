@@ -23,6 +23,28 @@ import {
   addAdminNote,
 } from "./firebase";
 
+// ---- Helpers robustos para promessas com timeout e upload seguro ----
+function withTimeout(promise, ms, label = "operação") {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) =>
+      setTimeout(() => rej(new Error(`Timeout ao tentar ${label} (${ms}ms)`)), ms)
+    ),
+  ]);
+}
+
+// Faz upload sequencial com timeout por arquivo e retorna [{name,size,type,url,path}]
+async function uploadAllFiles(protocolo, files, putFn, perFileTimeoutMs = 20000) {
+  const uploaded = [];
+  for (const f of files) {
+    const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const path = `reports/${protocolo}/${safeName}`;
+    const url = await withTimeout(putFn(path, f), perFileTimeoutMs, `enviar ${f.name}`);
+    uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+  }
+  return uploaded;
+}
+
 /* ==================== Config & Consts ==================== */
 const POLICY_VERSION = "1.0";
 const POLICY_UPDATED = "09/10/2025";
@@ -333,84 +355,98 @@ function Report() {
     return (h >>> 0).toString(36);
   };
 
-  const onSubmit = async () => {
-    if (!canSubmit) {
-      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
-      return;
-    }
-    if (submitting) return;
+const onSubmit = async () => {
+  if (!canSubmit) {
+    alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
+    return;
+  }
+  if (submitting) return;
 
-    const key = payloadHash();
-    const last = sessionStorage.getItem("last_submit_hash");
-    if (last && last === key) {
-      alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+  // idempotência por hash do payload
+  const key = payloadHash();
+  const last = sessionStorage.getItem("last_submit_hash");
+  if (last && last === key) {
+    alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+    return;
+  }
+
+  setSubmitting(true);
+
+  try {
+    sessionStorage.setItem("last_submit_hash", key);
+
+    // 1) Garante auth anônima (necessária para regras do Firestore/Storage)
+    try {
+      await withTimeout(ensureAnonAuth(), 8000, "iniciar sessão anônima");
+    } catch (e) {
+      console.error("[ensureAnonAuth] erro:", e);
+      alert("Falha ao iniciar sessão anônima. Verifique sua conexão e tente novamente.");
+      sessionStorage.removeItem("last_submit_hash");
       return;
     }
+
+    // 2) Protocolo
+    const protocolo = genProtocolo();
+
+    // 3) Upload de anexos (opcional)
+    let anexosSubidos = [];
+    if (files.length) {
+      try {
+        // tamanho máximo 8MB por arquivo
+        const ok = files.filter((f) => f.size <= 8 * 1024 * 1024);
+        if (ok.length !== files.length) {
+          alert("Alguns arquivos foram ignorados: tamanho acima de 8MB.");
+        }
+        anexosSubidos = await uploadAllFiles(protocolo, ok, uploadFile, 25000);
+      } catch (err) {
+        console.error("[upload] erro:", err);
+        alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
+        anexosSubidos = [];
+      }
+    }
+
+    // 4) Salva no Firestore (id = protocolo)
+    const data = {
+      protocolo,
+      unidade,
+      categoria,
+      perguntas: {
+        periodo: { tipo: "unico", data: dataUnica },
+        periodicidade,
+        onde,
+        valorFinanceiro,
+        foiReportado,
+        paraQuem,
+      },
+      descricao: descricao.trim(),
+      anonimo,
+      contato: anonimo ? null : { ...contato, prefer },
+      anexos: anexosSubidos,
+      status: "Recebido",
+      _idempotency: key,
+      createdAt: new Date().toISOString(),
+    };
 
     try {
-      setSubmitting(true);
-      sessionStorage.setItem("last_submit_hash", key);
-
-      // autenticação anônima p/ regras do Storage/Firestore
-      try {
-        await ensureAnonAuth();
-      } catch (e) {
-        console.error("Anon auth error:", e);
-        alert("Falha ao iniciar sessão anônima. Tente novamente.");
-        sessionStorage.removeItem("last_submit_hash");
-        return;
-      }
-
-      const protocolo = genProtocolo();
-
-      // Upload anexos
-      let anexosSubidos = [];
-      if (files.length) {
-        try {
-          const uploaded = [];
-          for (const f of files) {
-            const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-            const path = `reports/${protocolo}/${safeName}`;
-            const url = await uploadFile(path, f);
-            uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
-          }
-          anexosSubidos = uploaded;
-        } catch (err) {
-          console.error("Upload error:", err);
-          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
-          anexosSubidos = [];
-        }
-      }
-
-      // Salva denúncia no Firestore (idempotente pelo protocolo)
-      const data = {
-        protocolo,
-        unidade,
-        categoria,
-        perguntas: {
-          periodo: { tipo: "unico", data: dataUnica },
-          periodicidade,
-          onde,
-          valorFinanceiro,
-          foiReportado,
-          paraQuem,
-        },
-        descricao: descricao.trim(),
-        anonimo,
-        contato: anonimo ? null : { ...contato, prefer },
-        anexos: anexosSubidos,
-        status: "Recebido",
-        _idempotency: key,
-      };
-
-      await createOrReplaceReport(protocolo, data);
-
-      window.location.hash = `#/status?proto=${protocolo}`;
-      alert(`Denúncia registrada. Protocolo: ${protocolo}`);
-    } finally {
-      setSubmitting(false);
+      await withTimeout(
+        createOrReplaceReport(protocolo, data),
+        8000,
+        "salvar denúncia no Firestore"
+      );
+    } catch (err) {
+      console.error("[firestore] erro:", err);
+      alert("Não foi possível salvar sua denúncia agora. Tente novamente em instantes.");
+      sessionStorage.removeItem("last_submit_hash");
+      return;
     }
-  };
+
+    // 5) Redireciona para status
+    window.location.hash = `#/status?proto=${protocolo}`;
+    alert(`Denúncia registrada com sucesso.\nProtocolo: ${protocolo}`);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const StepChip = ({ n }) => {
     const active = step === n;

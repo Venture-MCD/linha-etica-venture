@@ -26,12 +26,15 @@ import {
 } from "./firebase";
 
 /* ----------------------------------------------
-   Helpers
+   Constantes e helpers
 ---------------------------------------------- */
 
 const ADMIN_PASS = "Venture@4266";
 const COMPANY = "Venture";
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
+
+const base = import.meta.env.BASE_URL || "/";
+const logoUrl = new URL("logo-venture.png", base).href;
 
 const withTimeout = (promise, ms, label = "operação") =>
   Promise.race([
@@ -85,12 +88,6 @@ const Field = ({ label, hint, children }) => (
 );
 
 const NavBar = () => {
-  // no topo do arquivo:
-const base = import.meta.env.BASE_URL || "/";
-const logoUrl = new URL("logo-venture.png", base).href;
-
-// onde está o <img ... />
-<img src={logoUrl} alt="Venture" className="h-6 w-auto" />
   const [open, setOpen] = useState(false);
   const link = (hash, label) => (
     <a
@@ -106,7 +103,7 @@ const logoUrl = new URL("logo-venture.png", base).href;
     <div className="flex items-center justify-between">
       <a href="#/">
         <div className="flex items-center gap-2">
-          <img src="/logo-venture.png" alt="Venture" className="h-6 w-auto" />
+          <img src={logoUrl} alt="Venture" className="h-6 w-auto" />
           <span className="font-semibold">{COMPANY}</span>
         </div>
       </a>
@@ -143,7 +140,7 @@ const logoUrl = new URL("logo-venture.png", base).href;
 };
 
 /* ----------------------------------------------
-   Páginas
+   Páginas (Home, Termos, Report, Status, FAQ, Admin)
 ---------------------------------------------- */
 
 function Home() {
@@ -250,11 +247,11 @@ function Terms() {
 }
 
 /* ----------------------------------------------
-   Report (5 etapas)
+   Report (com gate de termos/aceite e 5 etapas)
 ---------------------------------------------- */
 
 function Report() {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // 0 = política/termos, depois 1..5
   const [aceitou, setAceitou] = useState(false);
 
   // Etapa 1
@@ -266,7 +263,7 @@ function Report() {
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
 
-  // Etapa 3 (envolvidos/testemunhas simplificado)
+  // Etapa 3
   const [envolvidos, setEnvolvidos] = useState([{ nome: "", cargo: "", relacao: "" }]);
   const [testemunhas, setTestemunhas] = useState([{ nome: "", contato: "" }]);
   const [valorFinanceiro, setValorFinanceiro] = useState("");
@@ -280,13 +277,11 @@ function Report() {
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
-  // Estado envio
   const [submitting, setSubmitting] = useState(false);
 
   const canStep2 = dataUnica && onde.trim().length > 1 && descricao.trim().length >= 100;
-  const canSubmit = canStep2; // + outras validações simples se quiser
-
-  const periodicidade = "unico"; // mantemos campo no payload para compat.
+  const canSubmit = canStep2;
+  const periodicidade = "unico";
 
   const payloadHash = () =>
     hash(
@@ -311,9 +306,9 @@ function Report() {
     setFiles(arr);
   };
 
-  const go = (n) => setStep((s) => Math.max(1, Math.min(5, n)));
+  const go = (n) => setStep((s) => Math.max(0, Math.min(5, n)));
 
-  // ---- SUBMIT (Etapa 5)
+  // SUBMIT
   const onSubmit = async () => {
     if (!canSubmit) {
       alert("Preencha os campos obrigatórios da Etapa 2 (data, onde e descrição ≥ 100).");
@@ -321,7 +316,6 @@ function Report() {
     }
     if (submitting) return;
 
-    // idempotência local (anti-duplo clique)
     const key = payloadHash();
     const last = sessionStorage.getItem("last_submit_hash");
     if (last && last === key) {
@@ -333,28 +327,24 @@ function Report() {
       setSubmitting(true);
       sessionStorage.setItem("last_submit_hash", key);
 
-      // Auth anônima
       try {
         await withTimeout(ensureAnonAuth(), 15000, "autenticação anônima");
       } catch (e) {
         console.error("Auth error", e);
         sessionStorage.removeItem("last_submit_hash");
-        alert(
-          "Falha na autenticação anônima do Firebase. Verifique se 'Anonymous' está habilitado no Authentication."
-        );
+        alert("Falha na autenticação anônima do Firebase. Habilite 'Anonymous' no Authentication.");
         return;
       }
 
       const protocolo = genProtocolo();
       let anexosSubidos = [];
 
-      // Upload resumable
       if (files && files.length) {
         try {
           const uploaded = [];
           for (const f of files) {
-            if (f.size > 10 * 1024 * 1024) {
-              alert(`O arquivo ${f.name} excede 10 MB. Reduza ou envie outro.`);
+            if (f.size > 20 * 1024 * 1024) {
+              alert(`O arquivo ${f.name} excede 20 MB. Reduza ou envie outro.`);
               continue;
             }
             const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -365,14 +355,11 @@ function Report() {
           anexosSubidos = uploaded;
         } catch (err) {
           console.error("Upload error", err);
-          alert(
-            "Não foi possível enviar os anexos (tempo excedido ou permissão). Você pode tentar novamente ou enviar sem anexos."
-          );
+          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
           anexosSubidos = [];
         }
       }
 
-      // Monta doc e grava
       const data = {
         protocolo,
         unidade,
@@ -399,9 +386,7 @@ function Report() {
       } catch (err) {
         console.error("Firestore error", err);
         sessionStorage.removeItem("last_submit_hash");
-        alert(
-          "Falha ao salvar a denúncia no Firestore. Verifique se o Firestore está criado e as regras permitem 'auth != null'."
-        );
+        alert("Falha ao salvar a denúncia no Firestore. Verifique se o Firestore está criado e regras permitem 'auth != null'.");
         return;
       }
 
@@ -416,8 +401,8 @@ function Report() {
     }
   };
 
-  // Gate de Política de Uso
-  if (!aceitou) {
+  // Gate de termos (layout antigo)
+  if (step === 0) {
     return (
       <section className="space-y-4">
         <SectionTitle icon={AlertTriangle} title="Política de Uso" />
@@ -461,7 +446,7 @@ function Report() {
         subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
       />
 
-      {/* Navegador de etapas */}
+      {/* Navegador de etapas (1..5) */}
       <div className="flex gap-2">
         {[1, 2, 3, 4, 5].map((n) => (
           <button
@@ -572,7 +557,7 @@ function Report() {
             <div className="grid md:grid-cols-3 gap-4">
               <Field label="Quem esteve envolvido? (opcional)">
                 <input
-                  className="w-full rounded-lg border p-2"
+                  className="w-full rounded-lg border p-2 h-10"
                   placeholder="Nome"
                   value={envolvidos[0].nome}
                   onChange={(e) =>
@@ -582,7 +567,7 @@ function Report() {
               </Field>
               <Field label="Cargo/Setor (opcional)">
                 <input
-                  className="w-full rounded-lg border p-2"
+                  className="w-full rounded-lg border p-2 h-10"
                   placeholder="Cargo/Setor"
                   value={envolvidos[0].cargo}
                   onChange={(e) =>
@@ -592,7 +577,7 @@ function Report() {
               </Field>
               <Field label="Relação com o fato (opcional)">
                 <input
-                  className="w-full rounded-lg border p-2"
+                  className="w-full rounded-lg border p-2 h-10"
                   placeholder="Relação"
                   value={envolvidos[0].relacao}
                   onChange={(e) =>
@@ -605,7 +590,7 @@ function Report() {
             <div className="grid md:grid-cols-3 gap-4">
               <Field label="Testemunha (opcional)">
                 <input
-                  className="w-full rounded-lg border p-2"
+                  className="w-full rounded-lg border p-2 h-10"
                   placeholder="Nome"
                   value={testemunhas[0].nome}
                   onChange={(e) =>
@@ -615,7 +600,7 @@ function Report() {
               </Field>
               <Field label="Contato (opcional)">
                 <input
-                  className="w-full rounded-lg border p-2"
+                  className="w-full rounded-lg border p-2 h-10"
                   placeholder="E-mail ou telefone"
                   value={testemunhas[0].contato}
                   onChange={(e) =>
@@ -625,7 +610,7 @@ function Report() {
               </Field>
               <Field label="Houve impacto financeiro? (opcional)" hint="Se sim, estimativa do valor">
                 <input
-                  className="w-full rounded-lg border p-2"
+                  className="w-full rounded-lg border p-2 h-10"
                   placeholder="Ex.: ~R$ 5.000"
                   value={valorFinanceiro}
                   onChange={(e) => setValorFinanceiro(e.target.value)}
@@ -661,7 +646,13 @@ function Report() {
               <label className="inline-flex items-center gap-2 px-3 py-2 rounded border cursor-pointer">
                 <Upload size={16} />
                 Selecionar arquivos
-                <input type="file" className="hidden" multiple onChange={onFile} />
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={onFile}
+                  accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.mp4,.mov,.avi,.xlsx,.xls,.doc,.docx,.ppt,.pptx"
+                />
               </label>
               {files?.length > 0 && (
                 <ul className="text-sm mt-2 list-disc pl-5">
@@ -701,21 +692,21 @@ function Report() {
               <div className="grid md:grid-cols-3 gap-4">
                 <Field label="Nome">
                   <input
-                    className="w-full rounded-lg border p-2"
+                    className="w-full rounded-lg border p-2 h-10"
                     value={contato.nome}
                     onChange={(e) => setContato({ ...contato, nome: e.target.value })}
                   />
                 </Field>
                 <Field label="E-mail">
                   <input
-                    className="w-full rounded-lg border p-2"
+                    className="w-full rounded-lg border p-2 h-10"
                     value={contato.email}
                     onChange={(e) => setContato({ ...contato, email: e.target.value })}
                   />
                 </Field>
                 <Field label="Telefone">
                   <input
-                    className="w-full rounded-lg border p-2"
+                    className="w-full rounded-lg border p-2 h-10"
                     value={contato.telefone}
                     onChange={(e) => setContato({ ...contato, telefone: e.target.value })}
                   />
@@ -747,7 +738,7 @@ function Report() {
             </div>
 
             <p className="text-xs text-slate-500">
-              ⚠ Protótipo: dados operacionais na nuvem (Firestore/Storage). Ajuste regras antes de produção.
+              ⚠ Protótipo: dados na nuvem (Firestore/Storage). Ajuste regras antes de produção.
             </p>
           </>
         )}
@@ -1049,7 +1040,7 @@ function Admin() {
 }
 
 /* ----------------------------------------------
-   Roteador simples por hash
+   Roteador por hash
 ---------------------------------------------- */
 
 function RouterView() {

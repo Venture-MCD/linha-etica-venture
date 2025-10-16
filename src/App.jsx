@@ -33,8 +33,10 @@ const ADMIN_PASS = "Venture@4266";
 const COMPANY = "Venture";
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
 
-const base = import.meta.env.BASE_URL || "/";
-const logoUrl = new URL("logo-venture.png", base).href;
+- const base = import.meta.env.BASE_URL || "/";
+- const logoUrl = new URL("logo-venture.png", base).href;
++ const BASE = import.meta.env.BASE_URL || "/";
++ const logoUrl = `${BASE}logo-venture.png`;
 
 const withTimeout = (promise, ms, label = "operação") =>
   Promise.race([

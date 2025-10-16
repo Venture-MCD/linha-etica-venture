@@ -1,160 +1,178 @@
-// src/App.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ShieldAlert, FileText, Search, HelpCircle, Send, AlertTriangle,
-  Upload, LogIn, Lock, ArrowLeft
+  FileText,
+  Search,
+  HelpCircle,
+  Send,
+  ShieldAlert,
+  Lock,
+  Menu,
+  X,
+  Info,
+  CheckCircle2,
 } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL || "/";
+const logoUrl = `${BASE}logo-venture.png`; // ou .jpg
+
 
 import {
   ensureAnonAuth,
-  uploadFileResumable,
+  uploadFile,
   createOrReplaceReport,
   getReportByProtocol,
   subscribeReports,
   updateReport,
   addAdminNote,
-  subscribeAdminNotes,
-  getRuntimeFirebaseInfo,
 } from "./firebase";
 
+/* ==================== Config & Consts ==================== */
+const POLICY_VERSION = "1.0";
+const POLICY_UPDATED = "09/10/2025";
+const CONSENT_KEY = "consent_ok";
 const ADMIN_PASS = "Venture@4266";
-const COMPANY = "Venture";
-const UNIDADES = ["AGG","SEC","ECL","CLP","TAP","CGG","EXJ","KIZ","SEB","DAP"];
 
-const BASE = import.meta.env.BASE_URL || "/";
-const logoUrl = `${BASE}logo-venture.png`; // ou .jpg
+/* ==================== Helpers visuais ==================== */
+const Field = ({ label, required, hint, children }) => (
+  <label
+    className="grid gap-1"
+    style={{ gridTemplateRows: "minmax(20px,auto) minmax(16px,auto) auto" }}
+  >
+    <span className="text-sm font-medium leading-5">
+      {label} {required && <span className="text-rose-600">*</span>}
+    </span>
+    <div className={`text-xs leading-4 ${hint ? "text-slate-500" : "opacity-0"}`}>
+      {hint || "\u00A0"}
+    </div>
+    {children}
+  </label>
+);
 
-const withTimeout = (promise, ms, label = "operação") =>
-  Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout (${label}) após ${ms}ms`)), ms)
-    ),
-  ]);
-
-const genProtocolo = () =>
-  Math.random().toString(36).slice(2, 4).toUpperCase() +
-  Math.random().toString(36).slice(2, 4).toUpperCase() +
-  Math.floor(Math.random() * 9) +
-  Math.random().toString(36).slice(2, 3).toUpperCase();
-
-const hash = (str) =>
-  [...new TextEncoder().encode(str)].reduce((acc, b) => ((acc << 5) - acc + b) | 0, 0) + "";
-
-/* ----------------------------------------------
-   UI primitives
----------------------------------------------- */
-
-const Container = ({ children }) => (
-  <div className="min-h-screen bg-slate-50 text-slate-900">
-    <div className="max-w-6xl mx-auto px-4 py-6">{children}</div>
+const SelectBase = ({ className = "", children, ...props }) => (
+  <div className="relative">
+    <select
+      {...props}
+      className={
+        "w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] " +
+        "appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600 " +
+        className
+      }
+    >
+      {children}
+    </select>
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+    >
+      <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.17l3.71-2.94a.75.75 0 1 1 .94 1.16l-4.24 3.36a.75.75 0 0 1-.94 0L5.21 8.39a.75.75 0 0 1 .02-1.18z" />
+    </svg>
   </div>
 );
 
-const Card = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-4 ${className}`}>
+const inputClass =
+  "w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600";
+
+const btnPrimary =
+  "w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed";
+const btnOutline =
+  "w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50";
+
+const Card = ({ className, children }) => (
+  <div className={`rounded-xl border p-5 md:p-6 bg-white shadow ${className || ""}`}>
     {children}
   </div>
 );
 
 const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="mb-4">
-    <h1 className="text-2xl md:text-3xl font-semibold flex items-center gap-2">
-      {Icon && <Icon className="text-emerald-600" />}
-      {title}
-    </h1>
-    {subtitle && <p className="text-slate-600 mt-1">{subtitle}</p>}
-  </div>
-);
-
-const Field = ({ label, hint, children }) => (
   <div className="space-y-1">
-    {label && <label className="text-sm font-medium">{label}</label>}
-    {hint && <div className="text-xs text-slate-500">{hint}</div>}
-    {children}
+    <h2 className="flex items-center gap-2 text-lg md:text-xl font-bold">
+      <Icon className="h-5 w-5 text-emerald-600" />
+      {title}
+    </h2>
+    <p className="text-sm text-slate-500">{subtitle}</p>
   </div>
 );
 
-const NavBar = () => {
+const Stat = ({ label, value }) => (
+  <div className="text-center">
+    <div className="text-lg font-bold">{value}</div>
+    <div className="text-xs text-slate-500">{label}</div>
+  </div>
+);
+
+/* ==================== NAV ==================== */
+const Nav = () => {
   const [open, setOpen] = useState(false);
-  const link = (hash, label) => (
-    <a
-      href={hash}
-      className="px-3 py-2 rounded hover:bg-emerald-50 text-sm"
-      onClick={() => setOpen(false)}
-    >
-      {label}
-    </a>
-  );
-
+  useEffect(() => {
+    const close = () => setOpen(false);
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
   return (
-    <div className="flex items-center justify-between">
-      <a href="#/">
-        <div className="flex items-center gap-2">
-          <img src={logoUrl} alt="Venture" className="h-6 w-auto" />
-          <span className="font-semibold">{COMPANY}</span>
+    <nav className="mb-4 md:mb-6">
+      <div className="flex items-center justify-between">
+        <a href="#/" className="flex items-center gap-2">
+          <img src={ventureLogo} alt="Venture" className="h-7 w-auto object-contain" />
+          <span className="text-base font-semibold tracking-tight">Venture</span>
+        </a>
+        <div className="hidden md:flex gap-4">
+          <a href="#/" className="text-sm text-emerald-700 hover:underline">Home</a>
+          <a href="#/status" className="text-sm text-emerald-700 hover:underline">Acompanhar</a>
+          <a href="#/faq" className="text-sm text-emerald-700 hover:underline">FAQ</a>
+          <a href="#/termos" className="text-sm text-emerald-700 hover:underline">Política de Uso</a>
+          <a href="#/admin" className="text-sm text-emerald-700 hover:underline">Admin</a>
         </div>
-      </a>
-      <div className="hidden md:flex items-center gap-1">
-        {link("#/", "Home")}
-        {link("#/report", "Registrar denúncia")}
-        {link("#/status", "Acompanhar")}
-        {link("#/faq", "FAQ")}
-        {link("#/terms", "Política de Uso")}
-        {link("#/admin", "Admin")}
+        <button
+          className="md:hidden p-2 rounded-lg border"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Abrir menu"
+        >
+          {open ? <X size={18} /> : <Menu size={18} />}
+        </button>
       </div>
-      <button
-        className="md:hidden p-2 rounded hover:bg-slate-100"
-        onClick={() => setOpen((s) => !s)}
-        aria-label="menu"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24">
-          <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" />
-        </svg>
-      </button>
-
       {open && (
-        <div className="absolute right-4 top-16 bg-white border rounded-xl shadow-lg p-2 flex flex-col">
-          {link("#/", "Home")}
-          {link("#/report", "Registrar denúncia")}
-          {link("#/status", "Acompanhar")}
-          {link("#/faq", "FAQ")}
-          {link("#/terms", "Política de Uso")}
-          {link("#/admin", "Admin")}
+        <div className="mt-3 grid gap-2 md:hidden">
+          <a href="#/" className="px-3 py-2 rounded-lg border">Home</a>
+          <a href="#/status" className="px-3 py-2 rounded-lg border">Acompanhar</a>
+          <a href="#/faq" className="px-3 py-2 rounded-lg border">FAQ</a>
+          <a href="#/termos" className="px-3 py-2 rounded-lg border">Política de Uso</a>
+          <a href="#/admin" className="px-3 py-2 rounded-lg border">Admin</a>
         </div>
       )}
-    </div>
+    </nav>
   );
 };
 
-/* ----------------------------------------------
-   Páginas (Home, Termos, Report, Status, FAQ, Admin)
----------------------------------------------- */
+/* ==================== Dados & Utils ==================== */
+const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
+const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
+const genProtocolo = () => Math.random().toString(36).substring(2, 10).toUpperCase();
+const AvisosSeguranca = () => (
+  <div className="text-xs text-slate-500">
+    ⚠️ Protótipo: dados operacionais na nuvem (Firestore/Storage). Ajuste regras antes de produção.
+  </div>
+);
 
+/* ==================== HOME ==================== */
 function Home() {
+  const nextHref = sessionStorage.getItem(CONSENT_KEY) === "1" ? "#/report" : "#/termos";
   return (
-    <section id="home" className="space-y-6">
+    <section id="home" className="space-y-4 md:space-y-6">
       <SectionTitle
         icon={ShieldAlert}
         title="Bem-vindo à Linha Ética"
-        subtitle="Canal independente para relatos de má conduta, riscos e violações."
+        subtitle="Canal independente para denúncias de má conduta, riscos e violações."
       />
-
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-3 gap-3 md:gap-4">
         <Card>
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
-              <FileText />
-            </div>
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><FileText /></div>
             <div>
               <h3 className="font-semibold">Registrar denúncia</h3>
-              <p className="text-sm text-slate-600">
-                Envie um relato anônimo ou identificado. Gere um protocolo para acompanhar.
-              </p>
-              <a
-                href="#/report"
-                className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline"
-              >
+              <p className="text-sm text-slate-600">Envie uma denúncia anônima ou identificada. Gere um protocolo para acompanhar.</p>
+              <a href={nextHref} className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Iniciar <Send size={14} />
               </a>
             </div>
@@ -162,18 +180,11 @@ function Home() {
         </Card>
         <Card>
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
-              <Search />
-            </div>
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><Search /></div>
             <div>
               <h3 className="font-semibold">Acompanhar status</h3>
-              <p className="text-sm text-slate-600">
-                Use seu protocolo para ver andamento e interagir com o time responsável.
-              </p>
-              <a
-                href="#/status"
-                className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline"
-              >
+              <p className="text-sm text-slate-600">Use seu protocolo para ver andamento e interagir com o time responsável.</p>
+              <a href="#/status" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Acompanhar <Search size={14} />
               </a>
             </div>
@@ -181,125 +192,153 @@ function Home() {
         </Card>
         <Card>
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
-              <HelpCircle />
-            </div>
+            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><HelpCircle /></div>
             <div>
               <h3 className="font-semibold">FAQ / Política</h3>
-              <p className="text-sm text-slate-600">
-                Entenda como protegemos sua identidade e tratamos seus dados (LGPD).
-              </p>
-              <a
-                href="#/faq"
-                className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline"
-              >
+              <p className="text-sm text-slate-600">Entenda como protegemos sua identidade e tratamos seus dados (LGPD).</p>
+              <a href="#/faq" className="inline-flex items-center gap-2 mt-3 text-emerald-700 hover:underline">
                 Ver perguntas <HelpCircle size={14} />
               </a>
             </div>
           </div>
         </Card>
       </div>
-
       <Card>
-        <div className="grid md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Stat label="Unidades" value="10" />
           <Stat label="Tempo médio de abertura" value="2 min" />
           <Stat label="Protocolo gerado" value="Automático" />
           <Stat label="Custo" value="Hospedagem estática" />
         </div>
       </Card>
+      <div className="text-xs text-slate-500">
+        Área restrita: <a href="#/admin" className="underline inline-flex items-center gap-1">Painel <Lock size={12} /></a>
+      </div>
     </section>
   );
 }
 
-const Stat = ({ label, value }) => (
-  <div className="text-center">
-    <div className="text-2xl font-semibold">{value}</div>
-    <div className="text-sm text-slate-600">{label}</div>
-  </div>
-);
+/* ==================== POLÍTICA DE USO ==================== */
+function Termos() {
+  const [agree, setAgree] = useState(false);
 
-function Terms() {
+  const continuar = () => {
+    if (!agree) return;
+    sessionStorage.setItem(CONSENT_KEY, "1");
+    window.location.hash = "#/report";
+  };
+
   return (
-    <section className="space-y-4">
-      <SectionTitle icon={AlertTriangle} title="Política de Uso" />
-      <Card>
-        <p className="text-sm leading-relaxed text-slate-700">
-          Ao utilizar este canal, você concorda em fornecer informações verdadeiras e agir de boa-fé.
-          Sua identidade pode permanecer anônima, se desejar. Os dados são tratados conforme a LGPD e
-          usados exclusivamente para investigação interna. Conteúdos de boa-fé são protegidos.
-        </p>
+    <section className="space-y-4 md:space-y-6">
+      <SectionTitle
+        icon={Info}
+        title="Política de Uso da Linha Ética"
+        subtitle={`Versão ${POLICY_VERSION} • Atualizado em ${POLICY_UPDATED}`}
+      />
+      <Card className="space-y-4">
+        <div className="text-sm text-slate-700 space-y-3 max-h-[55vh] overflow-auto pr-1">
+          <p><strong>Objetivo.</strong> Canal para que colaboradores e terceiros relatem, de boa-fé, suspeitas de irregularidades ou violações.</p>
+          <p><strong>Anonimato.</strong> Você pode denunciar de forma anônima ou identificada.</p>
+          <p><strong>LGPD.</strong> Tratamento apenas do necessário, com base legal adequada e acesso restrito aos autorizados.</p>
+          <p><strong>Escopo do protótipo.</strong> Denúncias salvas no Firestore; anexos no Storage.</p>
+          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política.</p>
+        </div>
+
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={agree}
+            onChange={(e) => setAgree(e.target.checked)}
+          />
+          <span className="text-sm">Li e concordo com os termos e a Política de Uso.</span>
+        </label>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            className={agree ? btnPrimary : `${btnPrimary} cursor-not-allowed`}
+            disabled={!agree}
+            onClick={continuar}
+          >
+            <span className="inline-flex items-center gap-2">
+              Concordo e continuar <CheckCircle2 size={16} />
+            </span>
+          </button>
+          <a href="#/" className={btnOutline}>Cancelar e voltar</a>
+        </div>
       </Card>
+
+      <AvisosSeguranca />
     </section>
   );
 }
 
-/* ----------------------------------------------
-   Report (com gate de termos/aceite e 5 etapas)
----------------------------------------------- */
-
+/* ==================== REPORT ==================== */
 function Report() {
-  const [step, setStep] = useState(0); // 0 = política/termos, depois 1..5
-  const [aceitou, setAceitou] = useState(false);
-
-  // Etapa 1
+  const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
-  const [categoria, setCategoria] = useState("Assédio");
-
-  // Etapa 2
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
   const [dataUnica, setDataUnica] = useState("");
+  const [periodicidade, setPeriodicidade] = useState("único");
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
-
-  // Etapa 3
-  const [envolvidos, setEnvolvidos] = useState([{ nome: "", cargo: "", relacao: "" }]);
-  const [testemunhas, setTestemunhas] = useState([{ nome: "", contato: "" }]);
   const [valorFinanceiro, setValorFinanceiro] = useState("");
-  const [foiReportado, setFoiReportado] = useState("Não");
-
-  // Etapa 4 (anexos)
-  const [files, setFiles] = useState([]);
-
-  // Etapa 5 (anônimo/contato)
+  const [foiReportado, setFoiReportado] = useState("nao");
+  const [paraQuem, setParaQuem] = useState("");
+  const [files, setFiles] = useState([]); // File[]
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
 
+  // anti duplicação
   const [submitting, setSubmitting] = useState(false);
 
-  const canStep2 = dataUnica && onde.trim().length > 1 && descricao.trim().length >= 100;
-  const canSubmit = canStep2;
-  const periodicidade = "unico";
+  useEffect(() => {
+    if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
+      window.location.hash = "#/termos";
+    }
+  }, []);
 
-  const payloadHash = () =>
-    hash(
-      JSON.stringify({
-        unidade,
-        categoria,
-        dataUnica,
-        onde,
-        descricao,
-        envolvidos,
-        testemunhas,
-        valorFinanceiro,
-        foiReportado,
-        anonimo,
-        contato,
-        files: files?.map((f) => [f.name, f.size, f.type]),
-      })
-    );
+  const isValidISODate = (s) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+  const isFuture = (s) => {
+    if (!isValidISODate(s)) return false;
+    const d = new Date(s);
+    const today = new Date();
+    d.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return d > today;
+  };
+  const dateError = !dataUnica
+    ? "Informe a data do ocorrido."
+    : !isValidISODate(dataUnica)
+    ? "Data inválida."
+    : isFuture(dataUnica)
+    ? "A data não pode estar no futuro."
+    : "";
 
-  const onFile = (e) => {
-    const arr = [...(e.target.files || [])];
-    setFiles(arr);
+  const canNext1 = !!unidade && !!categoria;
+  const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
+  const canSubmit = canNext1 && canNext2;
+
+  // idempotency key
+  const payloadHash = () => {
+    const payload = {
+      unidade, categoria, dataUnica, periodicidade, onde,
+      descricao: descricao.trim(),
+      valorFinanceiro, foiReportado, paraQuem,
+      anonimo, contato, prefer,
+      files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
+    };
+    const s = JSON.stringify(payload);
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return (h >>> 0).toString(36);
   };
 
-  const go = (n) => setStep((s) => Math.max(0, Math.min(5, n)));
-
-  // SUBMIT
   const onSubmit = async () => {
     if (!canSubmit) {
-      alert("Preencha os campos obrigatórios da Etapa 2 (data, onde e descrição ≥ 100).");
+      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
       return;
     }
     if (submitting) return;
@@ -315,39 +354,38 @@ function Report() {
       setSubmitting(true);
       sessionStorage.setItem("last_submit_hash", key);
 
+      // autenticação anônima p/ regras do Storage/Firestore
       try {
-        await withTimeout(ensureAnonAuth(), 15000, "autenticação anônima");
+        await ensureAnonAuth();
       } catch (e) {
-        console.error("Auth error", e);
+        console.error("Anon auth error:", e);
+        alert("Falha ao iniciar sessão anônima. Tente novamente.");
         sessionStorage.removeItem("last_submit_hash");
-        alert("Falha na autenticação anônima do Firebase. Habilite 'Anonymous' no Authentication.");
         return;
       }
 
       const protocolo = genProtocolo();
-      let anexosSubidos = [];
 
-      if (files && files.length) {
+      // Upload anexos
+      let anexosSubidos = [];
+      if (files.length) {
         try {
           const uploaded = [];
           for (const f of files) {
-            if (f.size > 20 * 1024 * 1024) {
-              alert(`O arquivo ${f.name} excede 20 MB. Reduza ou envie outro.`);
-              continue;
-            }
             const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
             const path = `reports/${protocolo}/${safeName}`;
-            const url = await uploadFileResumable(path, f);
+            const url = await uploadFile(path, f);
             uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
           }
           anexosSubidos = uploaded;
         } catch (err) {
-          console.error("Upload error", err);
+          console.error("Upload error:", err);
           alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
           anexosSubidos = [];
         }
       }
 
+      // Salva denúncia no Firestore (idempotente pelo protocolo)
       const data = {
         protocolo,
         unidade,
@@ -358,9 +396,8 @@ function Report() {
           onde,
           valorFinanceiro,
           foiReportado,
+          paraQuem,
         },
-        envolvidos,
-        testemunhas,
         descricao: descricao.trim(),
         anonimo,
         contato: anonimo ? null : { ...contato, prefer },
@@ -369,669 +406,649 @@ function Report() {
         _idempotency: key,
       };
 
-      try {
-        await withTimeout(createOrReplaceReport(protocolo, data), 15000, "salvar denúncia no Firestore");
-      } catch (err) {
-        console.error("Firestore error", err);
-        sessionStorage.removeItem("last_submit_hash");
-        alert("Falha ao salvar a denúncia no Firestore. Verifique se o Firestore está criado e regras permitem 'auth != null'.");
-        return;
-      }
+      await createOrReplaceReport(protocolo, data);
 
       window.location.hash = `#/status?proto=${protocolo}`;
       alert(`Denúncia registrada. Protocolo: ${protocolo}`);
-    } catch (err) {
-      console.error("Erro geral no envio", err);
-      sessionStorage.removeItem("last_submit_hash");
-      alert(`Falha no envio: ${err.message || err}`);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Gate de termos (layout antigo)
-  if (step === 0) {
+  const StepChip = ({ n }) => {
+    const active = step === n;
     return (
-      <section className="space-y-4">
-        <SectionTitle icon={AlertTriangle} title="Política de Uso" />
-        <Card className="space-y-3">
-          <p className="text-sm text-slate-700">
-            Antes de registrar a denúncia, leia e aceite nossa Política de Uso. Seus dados são
-            tratados conforme a LGPD; você pode permanecer anônimo.
-          </p>
-          <div className="flex items-center gap-2">
-            <input id="ok" type="checkbox" className="h-4 w-4" onChange={(e) => setAceitou(e.target.checked)} />
-            <label htmlFor="ok" className="text-sm">
-              Declaro que li e concordo com a{" "}
-              <a href="#/terms" className="text-emerald-700 underline">
-                Política de Uso
-              </a>
-              .
-            </label>
-          </div>
-          <div className="flex gap-2">
-            <a href="#/" className="px-3 py-2 rounded border flex items-center gap-1">
-              <ArrowLeft size={16} /> Voltar
-            </a>
-            <button
-              className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
-              disabled={!aceitou}
-              onClick={() => setStep(1)}
-            >
-              Prosseguir
-            </button>
-          </div>
-        </Card>
-      </section>
+      <div
+        className={
+          active
+            ? "px-2 py-1 rounded-full border bg-emerald-600 text-white border-emerald-700"
+            : "px-2 py-1 rounded-full border bg-white"
+        }
+      >
+        {n}
+      </div>
     );
-  }
+  };
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 md:space-y-6">
       <SectionTitle
         icon={FileText}
         title="Registrar denúncia"
         subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
       />
+      <Card className={`space-y-4 ${submitting ? "pointer-events-none opacity-70 relative" : ""}`}>
+        {submitting && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center">
+            <div className="bg-black/40 rounded-md px-4 py-2 text-white">Enviando…</div>
+          </div>
+        )}
 
-      {/* Navegador de etapas (1..5) */}
-      <div className="flex gap-2">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            className={`h-8 w-8 rounded-full text-sm border ${step === n ? "bg-emerald-600 text-white" : "bg-white"}`}
-            onClick={() => go(n)}
-          >
-            {n}
-          </button>
-        ))}
-      </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="hidden md:inline text-slate-500">Etapas:</span>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <StepChip key={n} n={n} />
+          ))}
+        </div>
 
-      <Card className="space-y-4">
         {step === 1 && (
-          <>
-            <div className="grid md:grid-cols-3 gap-4">
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4 items-start">
               <Field label="Unidade *">
-                <select
-                  className="w-full rounded-lg border p-2 h-10"
-                  value={unidade}
-                  onChange={(e) => setUnidade(e.target.value)}
-                >
+                <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
                   {UNIDADES.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
+                    <option key={u}>{u}</option>
                   ))}
-                </select>
+                </SelectBase>
               </Field>
               <Field label="Categoria *">
-                <select
-                  className="w-full rounded-lg border p-2 h-10"
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                >
-                  {["Assédio", "Fraude", "Segurança", "Conflito de interesse", "Outros"].map((c) => (
+                <SelectBase value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                  {CATEGORIAS.map((c) => (
                     <option key={c}>{c}</option>
                   ))}
-                </select>
+                </SelectBase>
               </Field>
-              <div className="hidden md:block" />
             </div>
-            <div className="flex gap-2">
-              <a href="#/" className="px-3 py-2 rounded border flex items-center gap-1">
-                <ArrowLeft size={16} /> Voltar
-              </a>
-              <button className="px-4 py-2 rounded bg-emerald-600 text-white" onClick={() => go(2)}>
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <a href="#/" className={btnOutline}>Home</a>
+              <button disabled={!canNext1 || submitting} onClick={() => setStep(2)} className={btnPrimary}>
                 Próxima
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {step === 2 && (
-          <>
-            <div className="grid md:grid-cols-3 gap-4 items-end">
-              <Field label="Quando aconteceu? *" hint="Data aproximada ou período">
-                <input
-                  type="date"
-                  className="w-full rounded-lg border p-2 h-10"
-                  value={dataUnica}
-                  onChange={(e) => setDataUnica(e.target.value)}
-                />
-              </Field>
-              <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="Ex.: Loja KIZ - estoque"
-                  value={onde}
-                  onChange={(e) => setOnde(e.target.value)}
-                />
-              </Field>
-              <div className="md:col-span-1" />
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-12 gap-4 items-start">
+              <div className="md:col-span-4">
+                <Field label="Quando aconteceu? *" hint="Selecione a data do ocorrido">
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={dataUnica}
+                    onChange={(e) => setDataUnica(e.target.value)}
+                  />
+                  {dateError && <div className="text-xs text-rose-600 mt-1">{dateError}</div>}
+                </Field>
+              </div>
+              <div className="md:col-span-4">
+                <Field label="Recorrência" hint=" ">
+                  <SelectBase value={periodicidade} onChange={(e) => setPeriodicidade(e.target.value)}>
+                    <option value="único">Evento único</option>
+                    <option value="recorrente">Recorrente</option>
+                    <option value="contínuo">Contínuo</option>
+                  </SelectBase>
+                </Field>
+              </div>
+              <div className="md:col-span-4">
+                <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
+                  <input
+                    className={inputClass}
+                    placeholder="Ex.: Loja KIZ - estoque"
+                    value={onde}
+                    onChange={(e) => setOnde(e.target.value)}
+                  />
+                </Field>
+              </div>
             </div>
 
             <Field
-              label="Descreva detalhadamente o ocorrido *"
+              label="Descreva detalhadamente a denúncia *"
               hint="O que aconteceu? Quem estava envolvido? Há evidências?"
             >
               <textarea
-                className="w-full rounded-lg border p-3 min-h-[180px]"
+                className="w-full rounded-lg border p-3 min-h-[160px]"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
                 placeholder="Conte os fatos com o máximo de detalhes possíveis…"
               />
-              <div className={`text-xs mt-1 ${descricao.length < 100 ? "text-rose-600" : "text-slate-500"}`}>
-                {descricao.length} / 100
+              <div
+                className={
+                  descricao.trim().length < 100
+                    ? "text-xs mt-1 text-rose-600"
+                    : "text-xs mt-1 text-slate-500"
+                }
+              >
+                {descricao.trim().length} / 100
               </div>
             </Field>
 
-            <div className="flex gap-2">
-              <button className="px-3 py-2 rounded border flex items-center gap-1" onClick={() => go(1)}>
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <button
-                className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
-                onClick={() => go(3)}
-                disabled={!canStep2}
-              >
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(1)} className={btnOutline}>Voltar</button>
+              <button disabled={!canNext2 || submitting} onClick={() => setStep(3)} className={btnPrimary}>
                 Próxima
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {step === 3 && (
-          <>
-            <div className="grid md:grid-cols-3 gap-4">
-              <Field label="Quem esteve envolvido? (opcional)">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="Nome"
-                  value={envolvidos[0].nome}
-                  onChange={(e) =>
-                    setEnvolvidos((prev) => [{ ...prev[0], nome: e.target.value }])
-                  }
-                />
-              </Field>
-              <Field label="Cargo/Setor (opcional)">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="Cargo/Setor"
-                  value={envolvidos[0].cargo}
-                  onChange={(e) =>
-                    setEnvolvidos((prev) => [{ ...prev[0], cargo: e.target.value }])
-                  }
-                />
-              </Field>
-              <Field label="Relação com o fato (opcional)">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="Relação"
-                  value={envolvidos[0].relacao}
-                  onChange={(e) =>
-                    setEnvolvidos((prev) => [{ ...prev[0], relacao: e.target.value }])
-                  }
-                />
-              </Field>
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-12 gap-4 items-start">
+              <div className="md:col-span-6">
+                <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+                  <input
+                    className={inputClass}
+                    placeholder="Ex.: ~R$ 5.000"
+                    value={valorFinanceiro}
+                    onChange={(e) => setValorFinanceiro(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="md:col-span-6">
+                <Field label="Você já reportou isso internamente?" hint=" ">
+                  <SelectBase value={foiReportado} onChange={(e) => setFoiReportado(e.target.value)}>
+                    <option value="nao">Não</option>
+                    <option value="sim">Sim</option>
+                  </SelectBase>
+                </Field>
+              </div>
+              {foiReportado === "sim" && (
+                <div className="md:col-span-12">
+                  <Field label="Para quem? (opcional)" hint="Departamento, nome ou canal">
+                    <input className={inputClass} value={paraQuem} onChange={(e) => setParaQuem(e.target.value)} />
+                  </Field>
+                </div>
+              )}
             </div>
-
-            <div className="grid md:grid-cols-3 gap-4">
-              <Field label="Testemunha (opcional)">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="Nome"
-                  value={testemunhas[0].nome}
-                  onChange={(e) =>
-                    setTestemunhas((prev) => [{ ...prev[0], nome: e.target.value }])
-                  }
-                />
-              </Field>
-              <Field label="Contato (opcional)">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="E-mail ou telefone"
-                  value={testemunhas[0].contato}
-                  onChange={(e) =>
-                    setTestemunhas((prev) => [{ ...prev[0], contato: e.target.value }])
-                  }
-                />
-              </Field>
-              <Field label="Houve impacto financeiro? (opcional)" hint="Se sim, estimativa do valor">
-                <input
-                  className="w-full rounded-lg border p-2 h-10"
-                  placeholder="Ex.: ~R$ 5.000"
-                  value={valorFinanceiro}
-                  onChange={(e) => setValorFinanceiro(e.target.value)}
-                />
-              </Field>
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(2)} className={btnOutline}>Voltar</button>
+              <button onClick={() => setStep(4)} className={btnPrimary}>Próxima</button>
             </div>
-
-            <Field label="Você já reportou isso internamente?">
-              <select
-                className="w-full rounded-lg border p-2 h-10 max-w-[280px]"
-                value={foiReportado}
-                onChange={(e) => setFoiReportado(e.target.value)}
-              >
-                <option>Não</option>
-                <option>Sim</option>
-              </select>
-            </Field>
-
-            <div className="flex gap-2">
-              <button className="px-3 py-2 rounded border flex items-center gap-1" onClick={() => go(2)}>
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <button className="px-4 py-2 rounded bg-emerald-600 text-white" onClick={() => go(4)}>
-                Próxima
-              </button>
-            </div>
-          </>
+          </div>
         )}
 
         {step === 4 && (
-          <>
-            <Field label="Anexos (opcional)">
-              <label className="inline-flex items-center gap-2 px-3 py-2 rounded border cursor-pointer">
-                <Upload size={16} />
-                Selecionar arquivos
-                <input
-                  type="file"
-                  className="hidden"
-                  multiple
-                  onChange={onFile}
-                  accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.mp4,.mov,.avi,.xlsx,.xls,.doc,.docx,.ppt,.pptx"
-                />
-              </label>
-              {files?.length > 0 && (
-                <ul className="text-sm mt-2 list-disc pl-5">
+          <div className="space-y-4">
+            <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  const list = Array.from(e.target.files || []);
+                  const ok = list.filter((f) => f.size <= 8 * 1024 * 1024);
+                  const rejeitados = list.length - ok.length;
+                  if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 8MB (${rejeitados}).`);
+                  setFiles(ok);
+                }}
+              />
+              {!!files.length && (
+                <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
                   {files.map((f, i) => (
                     <li key={i}>
-                      {f.name} — {Math.round(f.size / 1024)} KB
+                      {f.name} ({Math.round(f.size / 1024)} KB)
                     </li>
                   ))}
                 </ul>
               )}
             </Field>
-            <div className="flex gap-2">
-              <button className="px-3 py-2 rounded border flex items-center gap-1" onClick={() => go(3)}>
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <button className="px-4 py-2 rounded bg-emerald-600 text-white" onClick={() => go(5)}>
-                Próxima
-              </button>
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(3)} className={btnOutline}>Voltar</button>
+              <button onClick={() => setStep(5)} className={btnPrimary}>Próxima</button>
             </div>
-          </>
+          </div>
         )}
 
         {step === 5 && (
-          <>
-            <Field label="Anonimato">
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={anonimo}
-                  onChange={(e) => setAnonimo(e.target.checked)}
-                />
-                Quero permanecer anônimo
+          <div className="space-y-4">
+            <Field label="Anonimato" hint=" ">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={anonimo} onChange={(e) => setAnonimo(e.target.checked)} />
+                <span className="text-sm">Quero permanecer anônimo</span>
               </label>
             </Field>
 
             {!anonimo && (
-              <div className="grid md:grid-cols-3 gap-4">
-                <Field label="Nome">
-                  <input
-                    className="w-full rounded-lg border p-2 h-10"
-                    value={contato.nome}
-                    onChange={(e) => setContato({ ...contato, nome: e.target.value })}
-                  />
-                </Field>
-                <Field label="E-mail">
-                  <input
-                    className="w-full rounded-lg border p-2 h-10"
-                    value={contato.email}
-                    onChange={(e) => setContato({ ...contato, email: e.target.value })}
-                  />
-                </Field>
-                <Field label="Telefone">
-                  <input
-                    className="w-full rounded-lg border p-2 h-10"
-                    value={contato.telefone}
-                    onChange={(e) => setContato({ ...contato, telefone: e.target.value })}
-                  />
-                </Field>
-                <Field label="Preferência de contato">
-                  <select
-                    className="w-full rounded-lg border p-2 h-10"
-                    value={prefer}
-                    onChange={(e) => setPrefer(e.target.value)}
-                  >
-                    <option value="email">E-mail</option>
-                    <option value="telefone">Telefone</option>
-                  </select>
-                </Field>
+              <div className="grid md:grid-cols-12 gap-4 items-start">
+                <div className="md:col-span-4">
+                  <Field label="Nome" hint=" ">
+                    <input className={inputClass} value={contato.nome} onChange={(e) => setContato({ ...contato, nome: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Email" hint=" ">
+                    <input type="email" className={inputClass} value={contato.email} onChange={(e) => setContato({ ...contato, email: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Telefone" hint=" ">
+                    <input className={inputClass} value={contato.telefone} onChange={(e) => setContato({ ...contato, telefone: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Preferência de contato" hint=" ">
+                    <SelectBase value={prefer} onChange={(e) => setPrefer(e.target.value)}>
+                      <option value="email">Email</option>
+                      <option value="telefone">Telefone</option>
+                    </SelectBase>
+                  </Field>
+                </div>
               </div>
             )}
 
-            <div className="flex gap-2">
-              <button className="px-3 py-2 rounded border flex items-center gap-1" onClick={() => go(4)}>
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <button
-                className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
-                disabled={!canSubmit || submitting}
-                onClick={onSubmit}
-              >
-                {submitting ? "Enviando..." : "Enviar denúncia"}
+            <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+              <button onClick={() => setStep(4)} className={btnOutline} disabled={submitting}>Voltar</button>
+              <button onClick={onSubmit} disabled={!canSubmit || submitting} className={btnPrimary}>
+                {submitting ? "Enviando…" : "Enviar denúncia"}
               </button>
             </div>
-
-            <p className="text-xs text-slate-500">
-              ⚠ Protótipo: dados na nuvem (Firestore/Storage). Ajuste regras antes de produção.
-            </p>
-          </>
+          </div>
         )}
       </Card>
+      <AvisosSeguranca />
     </section>
   );
 }
 
-/* ----------------------------------------------
-   Status (Acompanhar)
----------------------------------------------- */
-
+/* ==================== STATUS ==================== */
 function Status() {
-  const [proto, setProto] = useState(() => {
-    const u = new URL(window.location.href);
-    return u.hash.includes("?proto=") ? u.hash.split("?proto=")[1] : "";
-  });
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [proto, setProto] = useState("");
 
-  const buscar = async () => {
-    if (!proto) return;
-    try {
-      setLoading(true);
-      const r = await getReportByProtocol(proto.trim());
-      setData(r);
-    } finally {
-      setLoading(false);
+  const onCheck = async () => {
+    if (!proto.trim()) return;
+    const res = await getReportByProtocol(proto.trim());
+    if (!res) {
+      alert("Protocolo não encontrado.");
+      return;
     }
+    const status = res.status || "-";
+    const ult = (res.notes || []).slice(-1)[0];
+    alert(
+      `Status: ${status}` +
+        (ult ? `\nÚltima atualização: ${ult.text || ""}` : "")
+    );
   };
 
-  useEffect(() => {
-    if (proto) buscar();
-  }, []);
-
   return (
-    <section className="space-y-4">
-      <SectionTitle icon={Search} title="Acompanhar" />
-      <Card className="space-y-3">
-        <div className="flex gap-2 items-center">
-          <input
-            className="rounded-lg border p-2 w-64"
-            placeholder="Digite o protocolo"
-            value={proto}
-            onChange={(e) => setProto(e.target.value.toUpperCase())}
-          />
-          <button className="px-4 py-2 bg-emerald-600 text-white rounded" onClick={buscar}>
-            Buscar
-          </button>
+    <section className="space-y-4 md:space-y-6">
+      <Card className="space-y-3 md:space-y-4">
+        <h3 className="text-lg font-semibold">Acompanhar denúncia</h3>
+        <Field label="Protocolo" hint="Digite o código recebido ao enviar a denúncia">
+          <input className={inputClass} value={proto} onChange={(e) => setProto(e.target.value)} />
+        </Field>
+        <div className="flex flex-col md:flex-row gap-2 md:gap-3">
+          <button onClick={onCheck} className={btnPrimary}>Consultar</button>
+          <a href="#/" className={btnOutline}>Voltar para Home</a>
         </div>
-        {loading && <p className="text-sm text-slate-500">Carregando…</p>}
-        {data ? (
-          <div className="space-y-2">
-            <div className="text-sm">Protocolo: <b>{data.protocolo}</b></div>
-            <div className="text-sm">Status: <b>{data.status}</b></div>
-            {data.anexos?.length > 0 && (
-              <div className="text-sm">
-                Anexos:
-                <ul className="list-disc pl-5">
-                  {data.anexos.map((a, i) => (
-                    <li key={i}>
-                      <a className="text-emerald-700 underline" href={a.url} target="_blank" rel="noreferrer">
-                        {a.name}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500">Informe o protocolo para consultar.</p>
-        )}
       </Card>
+      <AvisosSeguranca />
     </section>
   );
 }
 
-/* ----------------------------------------------
-   FAQ
----------------------------------------------- */
-
+/* ==================== FAQ ==================== */
 function FAQ() {
   return (
-    <section className="space-y-4">
-      <SectionTitle icon={HelpCircle} title="FAQ" />
-      <Card className="space-y-2 text-sm text-slate-700">
-        <p><b>Posso denunciar anonimamente?</b> Sim. Você escolhe manter anonimato na Etapa 5.</p>
-        <p><b>Como acompanho?</b> Use o protocolo gerado ao final do envio.</p>
-        <p><b>Meus dados estão seguros?</b> Sim, seguimos boas práticas e LGPD; em produção as regras serão restritas.</p>
+    <section className="space-y-4 md:space-y-6">
+      <SectionTitle icon={HelpCircle} title="FAQ / Política" subtitle="Como lidamos com seus dados e sua identidade." />
+      <Card className="space-y-3 md:space-y-4">
+        <div>
+          <div className="font-semibold">Posso denunciar de forma anônima?</div>
+          <div className="text-sm text-slate-600">Sim. Você pode optar pelo anonimato. Seus dados não serão coletados, e o protocolo permite acompanhar sem se identificar.</div>
+        </div>
+        <div>
+          <div className="font-semibold">Quem terá acesso às informações?</div>
+          <div className="text-sm text-slate-600">Apenas o time responsável pela apuração. Informações são tratadas com confidencialidade e de acordo com a LGPD.</div>
+        </div>
+        <div>
+          <div className="font-semibold">Que tipos de casos posso reportar?</div>
+          <div className="text-sm text-slate-600">Assédio, fraude, conflito de interesses, e quaisquer violações de políticas internas ou leis.</div>
+        </div>
+        <div>
+          <div className="font-semibold">Como acompanho o status?</div>
+          <div className="text-sm text-slate-600">Use o protocolo gerado ao final do envio, na página “Acompanhar”.</div>
+        </div>
       </Card>
+      <AvisosSeguranca />
     </section>
   );
 }
 
-/* ----------------------------------------------
-   Admin (senha Venture@4266)
----------------------------------------------- */
+/* ==================== ADMIN (com Firestore) ==================== */
+function AdminPanel() {
+  const [q, setQ] = useState("");
+  const [lista, setLista] = useState([]);
+  const [sel, setSel] = useState(null);
 
-function Admin() {
-  const [authed, setAuthed] = useState(false);
-  const [senha, setSenha] = useState("");
-  const [itens, setItens] = useState([]);
-  const [filtro, setFiltro] = useState("");
-  const [selecionado, setSelecionado] = useState(null);
-  const [nota, setNota] = useState("");
-  const [notes, setNotes] = useState([]);
-
+  // Assina Firestore
   useEffect(() => {
-    if (!authed) return;
-    const unsub = subscribeReports((list) => setItens(list));
+    const unsub = subscribeReports((arr) => setLista(arr));
     return () => unsub && unsub();
-  }, [authed]);
+  }, []);
 
-  useEffect(() => {
-    if (!selecionado) return;
-    const unsub = subscribeAdminNotes(selecionado.protocolo, setNotes);
-    return () => unsub && unsub();
-  }, [selecionado]);
-
-  const entrar = () => {
-    if (senha === ADMIN_PASS) setAuthed(true);
-    else alert("Senha incorreta.");
+  const filtro = (c) => {
+    if (!q.trim()) return true;
+    const s = q.toLowerCase();
+    return (
+      c.id?.toLowerCase().includes(s) ||
+      c.protocolo?.toLowerCase?.().includes(s) ||
+      c.unidade?.toLowerCase?.().includes(s) ||
+      c.categoria?.toLowerCase?.().includes(s) ||
+      c.perguntas?.onde?.toLowerCase?.().includes(s) ||
+      c.descricao?.toLowerCase?.().includes(s)
+    );
   };
 
-  if (!authed) {
-    return (
-      <section className="space-y-4">
-        <SectionTitle icon={Lock} title="Área restrita" />
-        <Card className="max-w-md space-y-3">
-          <p className="text-sm text-slate-600">Informe a senha para acessar o painel administrativo.</p>
-          <input
-            className="w-full rounded-lg border p-2"
-            placeholder="Senha"
-            type="password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-          />
-          <button className="px-4 py-2 bg-emerald-600 text-white rounded" onClick={entrar}>
-            Entrar
-          </button>
-        </Card>
-      </section>
-    );
-  }
+  const filtered = lista.filter(filtro);
 
-  const lista = useMemo(() => {
-    const q = filtro.trim().toLowerCase();
-    if (!q) return itens;
-    return itens.filter((r) =>
-      JSON.stringify(r)?.toLowerCase().includes(q)
-    );
-  }, [itens, filtro]);
+  const [novoStatus, setNovoStatus] = useState("Recebido");
+  const [resposta, setResposta] = useState("");
 
-  const salvarStatus = async (protocolo, status) => {
-    await updateReport(protocolo, { status });
+  useEffect(() => {
+    if (sel) {
+      setNovoStatus(sel.status || "Recebido");
+      setResposta("");
+    }
+  }, [sel]);
+
+  const salvarStatus = async () => {
+    if (!sel) return;
+    await updateReport(sel.id, { status: novoStatus });
     alert("Status atualizado.");
   };
 
-  const enviarNota = async () => {
-    if (!nota.trim() || !selecionado) return;
-    await addAdminNote(selecionado.protocolo, "Admin", nota.trim());
-    setNota("");
+  const enviarResposta = async () => {
+    if (!sel || !resposta.trim()) return;
+    await addAdminNote(sel.id, {
+      at: new Date().toISOString(),
+      text: resposta.trim(),
+      by: "Admin",
+    });
+    setResposta("");
+    alert("Resposta adicionada ao histórico.");
   };
 
   return (
-    <section className="space-y-4">
-      <SectionTitle icon={LogIn} title="Painel (admin)" />
+    <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
-        <div className="flex items-center gap-2">
-          <input
-            className="rounded-lg border p-2 flex-1"
-            placeholder="Buscar por protocolo, unidade, categoria, descrição…"
-            value={filtro}
-            onChange={(e) => setFiltro(e.target.value)}
-          />
-          <a href="#/" className="px-3 py-2 rounded border">Home</a>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <h3 className="text-lg font-semibold">Painel (Firestore)</h3>
+          <div className="text-xs text-slate-500">Registros em tempo real</div>
         </div>
 
-        <div className="overflow-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b">
-                <th className="p-2">Protocolo</th>
-                <th className="p-2">Data</th>
-                <th className="p-2">Unidade</th>
-                <th className="p-2">Categoria</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Anexos</th>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <input
+            className={inputClass}
+            placeholder="Buscar por protocolo, unidade, categoria, descrição…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <a href="#/" className={btnOutline}>
+            Home
+          </a>
+        </div>
+
+        {/* Lista MOBILE */}
+        <div className="grid md:hidden gap-3">
+          {filtered.length === 0 && (
+            <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
+              Sem registros.
+            </div>
+          )}
+          {filtered.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-lg border p-3 bg-white"
+              onClick={() => setSel(c)}
+              role="button"
+            >
+              <div className="flex justify-between gap-2">
+                <div className="font-mono text-sm">{c.id}</div>
+                <div className="text-xs text-slate-500">{c.status || "-"}</div>
+              </div>
+              <div className="text-sm mt-1">
+                <span className="font-medium">{c.unidade}</span> • {c.categoria}
+              </div>
+              <div className="text-xs text-slate-600 mt-1">
+                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabela DESKTOP */}
+        <div className="overflow-auto rounded-lg border hidden md:block">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="p-2 border-b">Protocolo</th>
+                <th className="p-2 border-b">Unidade</th>
+                <th className="p-2 border-b">Categoria</th>
+                <th className="p-2 border-b">Onde</th>
+                <th className="p-2 border-b">Anon.</th>
+                <th className="p-2 border-b">Status</th>
+                <th className="p-2 border-b">Anexos</th>
               </tr>
             </thead>
             <tbody>
-              {lista.map((r) => (
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-3 text-center text-slate-500">
+                    Sem registros.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((c) => (
                 <tr
-                  key={r.protocolo}
-                  className="border-b hover:bg-slate-50 cursor-pointer"
-                  onClick={() => setSelecionado(r)}
+                  key={c.id}
+                  className="hover:bg-slate-50 cursor-pointer"
+                  onClick={() => setSel(c)}
                 >
-                  <td className="p-2 font-mono">{r.protocolo}</td>
-                  <td className="p-2">{r.createdAt?.toDate?.().toLocaleString?.() || "-"}</td>
-                  <td className="p-2">{r.unidade}</td>
-                  <td className="p-2">{r.categoria}</td>
-                  <td className="p-2">{r.status}</td>
-                  <td className="p-2">{r.anexos?.length || 0}</td>
+                  <td className="p-2 border-b font-mono">{c.id}</td>
+                  <td className="p-2 border-b">{c.unidade}</td>
+                  <td className="p-2 border-b">{c.categoria}</td>
+                  <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
+                  <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
+                  <td className="p-2 border-b">{c.status || "-"}</td>
+                  <td className="p-2 border-b">{c.anexos?.length || 0}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {selecionado && (
-          <div className="border rounded-xl p-3 space-y-2">
-            <div className="flex justify-between">
-              <div className="font-semibold">Protocolo {selecionado.protocolo}</div>
-              <button className="text-sm underline" onClick={() => setSelecionado(null)}>
+        {/* Detalhes */}
+        {sel && (
+          <div className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm text-slate-500">Protocolo</div>
+                <div className="font-mono font-semibold">{sel.id}</div>
+              </div>
+              <button className="text-sm underline" onClick={() => setSel(null)}>
                 fechar
               </button>
             </div>
-            <div className="grid md:grid-cols-3 gap-4">
-              <div>
-                <div className="text-xs text-slate-500">Categoria</div>
-                <div>{selecionado.categoria}</div>
-              </div>
+
+            <div className="grid md:grid-cols-2 gap-3 mt-2">
               <div>
                 <div className="text-xs text-slate-500">Unidade</div>
-                <div>{selecionado.unidade}</div>
+                <div>{sel.unidade}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Categoria</div>
+                <div>{sel.categoria}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Onde</div>
+                <div>{sel.perguntas?.onde || "-"}</div>
               </div>
               <div>
                 <div className="text-xs text-slate-500">Quando</div>
-                <div>{selecionado?.perguntas?.periodo?.data || "-"}</div>
+                <div>{sel.perguntas?.periodo?.data || "-"}</div>
               </div>
-              <div className="md:col-span-3">
-                <div className="text-xs text-slate-500">Descrição</div>
-                <div className="whitespace-pre-wrap break-words">{selecionado.descricao}</div>
+              <div>
+                <div className="text-xs text-slate-500">Recorrência</div>
+                <div>{sel.perguntas?.periodicidade || "-"}</div>
               </div>
-              {selecionado.anexos?.length > 0 && (
-                <div className="md:col-span-3">
-                  <div className="text-xs text-slate-500">Anexos</div>
+              <div>
+                <div className="text-xs text-slate-500">Impacto financeiro</div>
+                <div>{sel.perguntas?.valorFinanceiro || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Reportado internamente</div>
+                <div>
+                  {sel.perguntas?.foiReportado === "sim"
+                    ? `Sim (${sel.perguntas?.paraQuem || "—"})`
+                    : "Não"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Anonimato</div>
+                <div>{sel.anonimo ? "Sim" : "Não"}</div>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <div className="text-xs text-slate-500">Descrição</div>
+              <div
+                className="whitespace-pre-wrap max-w-full"
+                style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+              >
+                {sel.descricao}
+              </div>
+            </div>
+
+            {Array.isArray(sel.anexos) && (
+              <div className="mt-3">
+                <div className="text-xs text-slate-500">Anexos</div>
+                {sel.anexos.length === 0 ? (
+                  <div>-</div>
+                ) : (
                   <ul className="list-disc pl-5">
-                    {selecionado.anexos.map((a, i) => (
+                    {sel.anexos.map((f, i) => (
                       <li key={i}>
-                        <a className="text-emerald-700 underline" href={a.url} target="_blank" rel="noreferrer">
-                          {a.name}
-                        </a>{" "}
-                        — {a.type} ({Math.round(a.size / 1024)} KB)
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 underline"
+                          >
+                            {f.name}
+                          </a>
+                        ) : (
+                          f.name
+                        )}
+                        {typeof f.size === "number"
+                          ? ` (${Math.round(f.size / 1024)} KB)`
+                          : ""}
+                        {f.type ? ` — ${f.type}` : ""}
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select
-                className="rounded-lg border p-2 h-10"
-                value={selecionado.status}
-                onChange={(e) => salvarStatus(selecionado.protocolo, e.target.value)}
-              >
-                {["Recebido", "Em análise", "Em contato", "Concluído"].map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-              <span className="text-xs text-slate-500">Alterar status</span>
-            </div>
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Respostas / Histórico</div>
-              <ul className="text-sm space-y-1">
-                {notes.map((n) => (
-                  <li key={n.id}>
-                    <b>{n.author}:</b> {n.message}{" "}
-                    <span className="text-xs text-slate-500">
-                      {n.createdAt?.toDate?.().toLocaleString?.() || ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex gap-2">
-                <input
-                  className="rounded-lg border p-2 flex-1"
-                  placeholder="Adicionar resposta/andamento…"
-                  value={nota}
-                  onChange={(e) => setNota(e.target.value)}
-                />
-                <button className="px-3 py-2 bg-emerald-600 text-white rounded" onClick={enviarNota}>
-                  Enviar
-                </button>
+                )}
               </div>
+            )}
+
+            {/* Ações admin */}
+            <div className="mt-4 grid md:grid-cols-2 gap-3">
+              <Card className="space-y-2">
+                <div className="font-medium">Alterar status</div>
+                <SelectBase value={novoStatus} onChange={(e) => setNovoStatus(e.target.value)}>
+                  <option>Recebido</option>
+                  <option>Em análise</option>
+                  <option>Em contato</option>
+                  <option>Concluído</option>
+                </SelectBase>
+                <button onClick={salvarStatus} className={btnPrimary}>Salvar status</button>
+              </Card>
+
+              <Card className="space-y-2">
+                <div className="font-medium">Adicionar resposta / comentário</div>
+                <textarea
+                  className="w-full rounded-lg border p-3 min-h-[100px]"
+                  value={resposta}
+                  onChange={(e) => setResposta(e.target.value)}
+                  placeholder="Mensagem para histórico (visível no acompanhamento)"
+                />
+                <button onClick={enviarResposta} className={btnPrimary}>Salvar resposta</button>
+              </Card>
             </div>
+
+            {/* Histórico de respostas */}
+            {!!(sel.notes?.length) && (
+              <div className="mt-4">
+                <div className="text-xs text-slate-500 mb-1">Histórico</div>
+                <ul className="space-y-2">
+                  {sel.notes.map((n, idx) => (
+                    <li key={idx} className="rounded border p-2 bg-white">
+                      <div className="text-xs text-slate-500">{n.at} — {n.by || "Admin"}</div>
+                      <div className="whitespace-pre-wrap">{n.text}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </Card>
-
-      <div className="text-xs text-slate-500">
-        Debug: {JSON.stringify(getRuntimeFirebaseInfo())}
-      </div>
+      <AvisosSeguranca />
     </section>
   );
 }
 
-/* ----------------------------------------------
-   Roteador por hash
----------------------------------------------- */
+/* ==================== ADMIN protegido ==================== */
+function AdminProtected() {
+  const [ok, setOk] = useState(sessionStorage.getItem("admin_ok") === "1");
+  const [pwd, setPwd] = useState("");
+  const [err, setErr] = useState("");
 
-function RouterView() {
+  const submit = (e) => {
+    e.preventDefault();
+    if (pwd === ADMIN_PASS) {
+      sessionStorage.setItem("admin_ok", "1");
+      setOk(true);
+      setErr("");
+    } else {
+      setErr("Senha incorreta.");
+    }
+  };
+
+  if (ok) return <AdminPanel />;
+
+  return (
+    <section className="space-y-4 md:space-y-6">
+      <SectionTitle icon={Lock} title="Acesso restrito" subtitle="Informe a senha para acessar o painel." />
+      <Card className="space-y-3 max-w-md">
+        <form onSubmit={submit} className="space-y-3">
+          <Field label="Senha" hint="Contato: compliance/ética">
+            <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
+          </Field>
+        {err && <div className="text-xs text-rose-600">{err}</div>}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button className={btnPrimary}>Entrar</button>
+            <a href="#/" className={btnOutline}>Cancelar</a>
+          </div>
+        </form>
+      </Card>
+    </section>
+  );
+}
+
+/* ==================== Router ==================== */
+function AppRouter() {
   const [route, setRoute] = useState(window.location.hash || "#/");
 
   useEffect(() => {
@@ -1040,28 +1057,24 @@ function RouterView() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  let page = null;
-  if (route.startsWith("#/report")) page = <Report />;
-  else if (route.startsWith("#/status")) page = <Status />;
-  else if (route.startsWith("#/faq")) page = <FAQ />;
-  else if (route.startsWith("#/terms")) page = <Terms />;
-  else if (route.startsWith("#/admin")) page = <Admin />;
-  else page = <Home />;
-
-  return page;
-}
-
-/* ----------------------------------------------
-   App
----------------------------------------------- */
-
-export default function App() {
   return (
-    <Container>
-      <NavBar />
-      <div className="mt-6">
-        <RouterView />
-      </div>
-    </Container>
+    <main className="max-w-5xl mx-auto px-3 py-4 md:p-6">
+      <Nav />
+      {route.startsWith("#/report") ? (
+        <Report />
+      ) : route.startsWith("#/status") ? (
+        <Status />
+      ) : route.startsWith("#/faq") ? (
+        <FAQ />
+      ) : route.startsWith("#/admin") ? (
+        <AdminProtected />
+      ) : route.startsWith("#/termos") ? (
+        <Termos />
+      ) : (
+        <Home />
+      )}
+    </main>
   );
 }
+
+export default AppRouter;

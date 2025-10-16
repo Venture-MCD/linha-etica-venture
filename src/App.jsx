@@ -22,7 +22,7 @@ const COMPANY = "Venture";
 const UNIDADES = ["AGG","SEC","ECL","CLP","TAP","CGG","EXJ","KIZ","SEB","DAP"];
 
 const BASE = import.meta.env.BASE_URL || "/";
-const logoUrl = `${BASE}logo-venture.png`;
+const logoUrl = `${BASE}logo-venture.png`; // ou .jpg
 
 const withTimeout = (promise, ms, label = "operação") =>
   Promise.race([

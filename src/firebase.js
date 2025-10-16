@@ -24,7 +24,13 @@ import {
   ref as sref,
   uploadBytesResumable,
   getDownloadURL,
-} from "firebase/storage";
+  from "firebase/storage";
+// Gera URL de download a partir de um caminho do Storage (ex.: reports/PROTO/arquivo.pdf)
+  export async function getDownloadUrlByPath(storagePath) {
+  const storage = getStorage(app);
+  const r = sref(storage, storagePath);
+  return await getDownloadURL(r);
+}
 
 /* ========= Ler variáveis do .env =========
    (lembre: nomes começam com VITE_ para o Vite injetar no build)

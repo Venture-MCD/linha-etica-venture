@@ -1,7 +1,4 @@
-// Firebase SDK v11 (modular)
-// Funções expostas: ensureAnonAuth, uploadFile, createOrReplaceReport, getReportByProtocol,
-// subscribeReports, updateReport, addAdminNote
-
+// src/firebase.js
 import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
@@ -13,12 +10,12 @@ import {
   doc,
   setDoc,
   getDoc,
-  updateDoc,
   collection,
-  onSnapshot,
   query,
   orderBy,
+  onSnapshot,
   serverTimestamp,
+  updateDoc,
   arrayUnion,
 } from "firebase/firestore";
 import {
@@ -28,98 +25,117 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-/* ===================== Init ===================== */
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+/** =======================================================================
+ *  Carrega config tanto em VITE_FIREBASE_* quanto em VITE_FB_*
+ *  ======================================================================= */
+const cfg = {
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY ||
+    import.meta.env.VITE_FB_API_KEY,
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    import.meta.env.VITE_FB_AUTH_DOMAIN,
+  projectId:
+    import.meta.env.VITE_FIREBASE_PROJECT_ID ||
+    import.meta.env.VITE_FB_PROJECT_ID,
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    import.meta.env.VITE_FB_STORAGE_BUCKET,
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID ||
+    import.meta.env.VITE_FB_APP_ID,
+  // opcional (alguns projetos exibem)
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+    import.meta.env.VITE_FB_MESSAGING_SENDER_ID,
 };
 
-// Evita reinit em ambiente hot-reload
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+// Ajuda a diagnosticar variáveis ausentes
+function assertEnv(key, value) {
+  if (!value || String(value).trim() === "") {
+    console.error(`[firebase] Variável ausente: ${key}`);
+  }
+}
+assertEnv("apiKey", cfg.apiKey);
+assertEnv("authDomain", cfg.authDomain);
+assertEnv("projectId", cfg.projectId);
+assertEnv("storageBucket", cfg.storageBucket);
+assertEnv("appId", cfg.appId);
 
+if (!cfg.apiKey) {
+  // Evita quebrar a UI sem explicação
+  throw new Error(
+    "Firebase API Key ausente. Verifique seu .env(.production). " +
+      "Aceitamos VITE_FIREBASE_API_KEY ou VITE_FB_API_KEY."
+  );
+}
+
+// Inicializa app uma vez
+const app = getApps().length ? getApps()[0] : initializeApp(cfg);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-/* ===================== Utils internos ===================== */
-
-// Pequeno helper de timeout para operações assíncronas
-function withTimeout(promise, ms, label = "operação") {
-  return Promise.race([
-    promise,
-    new Promise((_, rej) =>
-      setTimeout(() => rej(new Error(`Timeout ao tentar ${label} (${ms}ms)`)), ms)
-    ),
-  ]);
-}
-
-/* ===================== API exposta ===================== */
-
-/**
- * Garante que há um usuário anônimo autenticado (necessário para regras de Security).
- * Retorna o user atual.
- */
+/** =======================================================================
+ *  Auth anônima (regras do Storage/Firestore dependem dela)
+ *  ======================================================================= */
 export async function ensureAnonAuth() {
-  const u = auth.currentUser;
-  if (u) return u;
-
-  // Espera brevemente por um usuário que talvez já esteja sendo autenticado
-  const maybeUser = await new Promise((resolve) => {
-    const unsub = onAuthStateChanged(auth, (usr) => {
-      unsub();
-      resolve(usr || null);
-    });
-    // timeout curto
-    setTimeout(() => {
-      try { unsub(); } catch {}
-      resolve(null);
-    }, 1000);
+  const user = auth.currentUser;
+  if (user) return user;
+  await signInAnonymously(auth);
+  // aguarda a sessão ficar disponível
+  await new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout auth")), 8000);
+    const unsub = onAuthStateChanged(
+      auth,
+      (u) => {
+        if (u) {
+          clearTimeout(t);
+          unsub();
+          resolve(u);
+        }
+      },
+      (e) => {
+        clearTimeout(t);
+        unsub();
+        reject(e);
+      }
+    );
   });
-  if (maybeUser) return maybeUser;
-
-  // Se ainda não houver, autentica anonimamente
-  const cred = await signInAnonymously(auth);
-  return cred.user;
+  return auth.currentUser;
 }
 
-/**
- * Faz upload de um arquivo para o Storage.
- * @param {string} path caminho completo (ex.: reports/PROTOCOLO/nome.ext)
- * @param {File|Blob} file
- * @returns {Promise<string>} URL de download pública
- */
+/** =======================================================================
+ *  Upload de arquivo ao Storage
+ *  path ex.: reports/PROTOCOLO/arquivo.ext
+ *  ======================================================================= */
 export async function uploadFile(path, file) {
   const r = sref(storage, path);
   await uploadBytes(r, file);
-  const url = await getDownloadURL(r);
-  return url;
+  return await getDownloadURL(r);
 }
 
-/**
- * Cria ou substitui (merge) o report com ID = protocolo.
- * @param {string} protocolo
- * @param {object} data
- */
+/** =======================================================================
+ *  Cria/Substitui denúncia por protocolo (id do doc = protocolo)
+ *  ======================================================================= */
 export async function createOrReplaceReport(protocolo, data) {
   const ref = doc(db, "reports", protocolo);
-  const payload = {
+  const snap = await getDoc(ref);
+  const base = {
     ...data,
-    // Garante createdAt (server) se não veio do App.jsx:
-    createdAt: data.createdAt || serverTimestamp(),
+    id: protocolo,
+    updatedAt: serverTimestamp(),
   };
-  await setDoc(ref, payload, { merge: true });
+  if (!snap.exists()) {
+    base.createdAt = serverTimestamp();
+  }
+  await setDoc(ref, base, { merge: true });
+  return protocolo;
 }
 
-/**
- * Busca um report pelo protocolo (ID do documento).
- * @param {string} protocolo
- * @returns {Promise<object|null>}
- */
+/** =======================================================================
+ *  Busca denúncia por protocolo
+ *  ======================================================================= */
 export async function getReportByProtocol(protocolo) {
   const ref = doc(db, "reports", protocolo);
   const snap = await getDoc(ref);
@@ -127,56 +143,37 @@ export async function getReportByProtocol(protocolo) {
   return { id: snap.id, ...snap.data() };
 }
 
-/**
- * Assina a coleção de reports em tempo real (para o Admin).
- * Ordena por createdAt desc se possível; se não, assina sem ordenação.
- * @param {(arr: any[]) => void} callback
- * @returns {() => void} unsubscribe
- */
-export function subscribeReports(callback) {
-  try {
-    const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
-    return onSnapshot(q, (ss) => {
-      const arr = ss.docs.map((d) => ({ id: d.id, ...d.data() }));
-      callback(arr);
-    });
-  } catch (e) {
-    // Fallback sem orderBy se o campo ainda não existir
-    console.warn("subscribeReports: fallback sem orderBy(createdAt)", e);
-    const col = collection(db, "reports");
-    return onSnapshot(col, (ss) => {
-      const arr = ss.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // Ordena no cliente por createdAt (serverTimestamp pode ser null nos primeiros ms)
-      arr.sort((a, b) => {
-        const ta = a.createdAt?.seconds || 0;
-        const tb = b.createdAt?.seconds || 0;
-        return tb - ta;
-      });
-      callback(arr);
-    });
-  }
+/** =======================================================================
+ *  Assinatura em tempo real para painel admin (ordenado por createdAt desc)
+ *  ======================================================================= */
+export function subscribeReports(cb) {
+  const q = query(
+    collection(db, "reports"),
+    orderBy("createdAt", "desc")
+  );
+  return onSnapshot(q, (ss) => {
+    const arr = ss.docs.map((d) => ({ id: d.id, ...d.data() }));
+    cb(arr);
+  });
 }
 
-/**
- * Atualiza campos de um report.
- * @param {string} id (protocolo)
- * @param {object} fields
- */
-export async function updateReport(id, fields) {
+/** =======================================================================
+ *  Atualiza campos de uma denúncia (por id/protocolo)
+ *  ======================================================================= */
+export async function updateReport(id, patch) {
   const ref = doc(db, "reports", id);
-  await updateDoc(ref, fields);
+  await updateDoc(ref, { ...patch, updatedAt: serverTimestamp() });
 }
 
-/**
- * Adiciona uma nota do admin no array "notes".
- * note: { at: string, text: string, by?: string }
- */
+/** =======================================================================
+ *  Adiciona nota/resposta do admin (array 'notes')
+ *  ======================================================================= */
 export async function addAdminNote(id, note) {
   const ref = doc(db, "reports", id);
   await updateDoc(ref, {
     notes: arrayUnion(note),
+    updatedAt: serverTimestamp(),
   });
 }
 
-/* ===================== Exporta clientes (se precisar) ===================== */
 export { app, auth, db, storage };

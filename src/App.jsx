@@ -11,7 +11,8 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
-const ventureLogo = import.meta.env.BASE_URL + "logo-venture.png";
+// Mantém como está no seu projeto atual
+import ventureLogo from "./logo-venture.jpeg";
 
 import {
   ensureAnonAuth,
@@ -21,29 +22,8 @@ import {
   subscribeReports,
   updateReport,
   addAdminNote,
+  getDownloadUrlByPath, // <— USADO NO PAINEL
 } from "./firebase";
-
-// ---- Helpers robustos para promessas com timeout e upload seguro ----
-function withTimeout(promise, ms, label = "operação") {
-  return Promise.race([
-    promise,
-    new Promise((_, rej) =>
-      setTimeout(() => rej(new Error(`Timeout ao tentar ${label} (${ms}ms)`)), ms)
-    ),
-  ]);
-}
-
-// Faz upload sequencial com timeout por arquivo e retorna [{name,size,type,url,path}]
-async function uploadAllFiles(protocolo, files, putFn, perFileTimeoutMs = 20000) {
-  const uploaded = [];
-  for (const f of files) {
-    const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const path = `reports/${protocolo}/${safeName}`;
-    const url = await withTimeout(putFn(path, f), perFileTimeoutMs, `enviar ${f.name}`);
-    uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
-  }
-  return uploaded;
-}
 
 /* ==================== Config & Consts ==================== */
 const POLICY_VERSION = "1.0";
@@ -355,98 +335,84 @@ function Report() {
     return (h >>> 0).toString(36);
   };
 
-const onSubmit = async () => {
-  if (!canSubmit) {
-    alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
-    return;
-  }
-  if (submitting) return;
+  const onSubmit = async () => {
+    if (!canSubmit) {
+      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
+      return;
+    }
+    if (submitting) return;
 
-  // idempotência por hash do payload
-  const key = payloadHash();
-  const last = sessionStorage.getItem("last_submit_hash");
-  if (last && last === key) {
-    alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
-    return;
-  }
-
-  setSubmitting(true);
-
-  try {
-    sessionStorage.setItem("last_submit_hash", key);
-
-    // 1) Garante auth anônima (necessária para regras do Firestore/Storage)
-    try {
-      await withTimeout(ensureAnonAuth(), 8000, "iniciar sessão anônima");
-    } catch (e) {
-      console.error("[ensureAnonAuth] erro:", e);
-      alert("Falha ao iniciar sessão anônima. Verifique sua conexão e tente novamente.");
-      sessionStorage.removeItem("last_submit_hash");
+    const key = payloadHash();
+    const last = sessionStorage.getItem("last_submit_hash");
+    if (last && last === key) {
+      alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
       return;
     }
 
-    // 2) Protocolo
-    const protocolo = genProtocolo();
+    try {
+      setSubmitting(true);
+      sessionStorage.setItem("last_submit_hash", key);
 
-    // 3) Upload de anexos (opcional)
-    let anexosSubidos = [];
-    if (files.length) {
+      // autenticação anônima p/ regras do Storage/Firestore
       try {
-        // tamanho máximo 8MB por arquivo
-        const ok = files.filter((f) => f.size <= 8 * 1024 * 1024);
-        if (ok.length !== files.length) {
-          alert("Alguns arquivos foram ignorados: tamanho acima de 8MB.");
-        }
-        anexosSubidos = await uploadAllFiles(protocolo, ok, uploadFile, 25000);
-      } catch (err) {
-        console.error("[upload] erro:", err);
-        alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
-        anexosSubidos = [];
+        await ensureAnonAuth();
+      } catch (e) {
+        console.error("Anon auth error:", e);
+        alert("Falha ao iniciar sessão anônima. Tente novamente.");
+        sessionStorage.removeItem("last_submit_hash");
+        return;
       }
+
+      const protocolo = genProtocolo();
+
+      // Upload anexos
+      let anexosSubidos = [];
+      if (files.length) {
+        try {
+          const uploaded = [];
+          for (const f of files) {
+            const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+            const path = `reports/${protocolo}/${safeName}`;
+            const url = await uploadFile(path, f);
+            uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+          }
+          anexosSubidos = uploaded;
+        } catch (err) {
+          console.error("Upload error:", err);
+          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
+          anexosSubidos = [];
+        }
+      }
+
+      // Salva denúncia no Firestore (idempotente pelo protocolo)
+      const data = {
+        protocolo,
+        unidade,
+        categoria,
+        perguntas: {
+          periodo: { tipo: "unico", data: dataUnica },
+          periodicidade,
+          onde,
+          valorFinanceiro,
+          foiReportado,
+          paraQuem,
+        },
+        descricao: descricao.trim(),
+        anonimo,
+        contato: anonimo ? null : { ...contato, prefer },
+        anexos: anexosSubidos,
+        status: "Recebido",
+        _idempotency: key,
+      };
+
+      await createOrReplaceReport(protocolo, data);
+
+      window.location.hash = `#/status?proto=${protocolo}`;
+      alert(`Denúncia registrada. Protocolo: ${protocolo}`);
+    } finally {
+      setSubmitting(false);
     }
-
-    // 4) Salva no Firestore (id = protocolo)
-    const data = {
-      protocolo,
-      unidade,
-      categoria,
-      perguntas: {
-        periodo: { tipo: "unico", data: dataUnica },
-        periodicidade,
-        onde,
-        valorFinanceiro,
-        foiReportado,
-        paraQuem,
-      },
-      descricao: descricao.trim(),
-      anonimo,
-      contato: anonimo ? null : { ...contato, prefer },
-      anexos: anexosSubidos,
-      status: "Recebido",
-      _idempotency: key,
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      await withTimeout(
-        createOrReplaceReport(protocolo, data),
-        8000,
-        "salvar denúncia no Firestore"
-      );
-    } catch (err) {
-      console.error("[firestore] erro:", err);
-      alert("Não foi possível salvar sua denúncia agora. Tente novamente em instantes.");
-      sessionStorage.removeItem("last_submit_hash");
-      return;
-    }
-
-    // 5) Redireciona para status
-    window.location.hash = `#/status?proto=${protocolo}`;
-    alert(`Denúncia registrada com sucesso.\nProtocolo: ${protocolo}`);
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   const StepChip = ({ n }) => {
     const active = step === n;
@@ -812,6 +778,30 @@ function AdminPanel() {
     alert("Resposta adicionada ao histórico.");
   };
 
+  // Abre anexo: usa URL se já existir; se não, resolve via path -> getDownloadURL
+  async function handleOpenAttachment(f) {
+    try {
+      let url = (f && typeof f.url === "string" ? f.url : "") || "";
+      const isHttp = /^https?:\/\//i.test(url);
+
+      if (!isHttp) {
+        if (f?.path) {
+          // import dinâmico para evitar mexer nos imports do topo
+          const { getDownloadUrlByPath } = await import("./firebase");
+          url = await getDownloadUrlByPath(f.path);
+        } else {
+          alert("Não foi possível localizar o arquivo (sem URL ou path).");
+          return;
+        }
+      }
+
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Erro ao abrir anexo:", err);
+      alert("Não foi possível abrir o anexo. Verifique as regras do Storage e tente novamente.");
+    }
+  }
+
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
@@ -971,23 +961,19 @@ function AdminPanel() {
                 ) : (
                   <ul className="list-disc pl-5">
                     {sel.anexos.map((f, i) => (
-                      <li key={i}>
-                        {f.url ? (
-                          <a
-                            href={f.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-emerald-700 underline"
-                          >
-                            {f.name}
-                          </a>
-                        ) : (
-                          f.name
-                        )}
-                        {typeof f.size === "number"
-                          ? ` (${Math.round(f.size / 1024)} KB)`
-                          : ""}
-                        {f.type ? ` — ${f.type}` : ""}
+                      <li key={i} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAttachment(f)}
+                          className="text-emerald-700 underline hover:no-underline"
+                          title="Abrir anexo"
+                        >
+                          {f.name || "Arquivo"}
+                        </button>
+                        <span className="text-xs text-slate-500">
+                          {typeof f.size === "number" ? `(${Math.round(f.size / 1024)} KB)` : ""}
+                          {f.type ? ` — ${f.type}` : ""}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -1069,7 +1055,7 @@ function AdminProtected() {
           <Field label="Senha" hint="Contato: compliance/ética">
             <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
-        {err && <div className="text-xs text-rose-600">{err}</div>}
+          {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
             <a href="#/" className={btnOutline}>Cancelar</a>

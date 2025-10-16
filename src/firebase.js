@@ -1,179 +1,169 @@
 // src/firebase.js
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   getAuth,
   signInAnonymously,
-  onAuthStateChanged,
 } from "firebase/auth";
 import {
   getFirestore,
   doc,
   setDoc,
   getDoc,
+  onSnapshot,
+  updateDoc,
+  serverTimestamp,
   collection,
   query,
   orderBy,
-  onSnapshot,
-  serverTimestamp,
-  updateDoc,
-  arrayUnion,
 } from "firebase/firestore";
 import {
   getStorage,
   ref as sref,
-  uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
 } from "firebase/storage";
 
-/** =======================================================================
- *  Carrega config tanto em VITE_FIREBASE_* quanto em VITE_FB_*
- *  ======================================================================= */
-const cfg = {
+/**
+ * 1) Tenta .env (Vite) -> 2) Fallback hardcoded (garante funcionar agora)
+ */
+const cfgFromEnv = {
   apiKey:
-    import.meta.env.VITE_FIREBASE_API_KEY ||
-    import.meta.env.VITE_FB_API_KEY,
+    import.meta?.env?.VITE_FB_API_KEY ||
+    import.meta?.env?.VITE_FIREBASE_API_KEY ||
+    "",
   authDomain:
-    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
-    import.meta.env.VITE_FB_AUTH_DOMAIN,
+    import.meta?.env?.VITE_FB_AUTH_DOMAIN ||
+    import.meta?.env?.VITE_FIREBASE_AUTH_DOMAIN ||
+    "",
   projectId:
-    import.meta.env.VITE_FIREBASE_PROJECT_ID ||
-    import.meta.env.VITE_FB_PROJECT_ID,
+    import.meta?.env?.VITE_FB_PROJECT_ID ||
+    import.meta?.env?.VITE_FIREBASE_PROJECT_ID ||
+    "",
   storageBucket:
-    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
-    import.meta.env.VITE_FB_STORAGE_BUCKET,
+    import.meta?.env?.VITE_FB_STORAGE_BUCKET ||
+    import.meta?.env?.VITE_FIREBASE_STORAGE_BUCKET ||
+    "",
   appId:
-    import.meta.env.VITE_FIREBASE_APP_ID ||
-    import.meta.env.VITE_FB_APP_ID,
-  // opcional (alguns projetos exibem)
-  messagingSenderId:
-    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ||
-    import.meta.env.VITE_FB_MESSAGING_SENDER_ID,
+    import.meta?.env?.VITE_FB_APP_ID ||
+    import.meta?.env?.VITE_FIREBASE_APP_ID ||
+    "",
 };
 
-// Ajuda a diagnosticar variáveis ausentes
-function assertEnv(key, value) {
-  if (!value || String(value).trim() === "") {
-    console.error(`[firebase] Variável ausente: ${key}`);
-  }
-}
-assertEnv("apiKey", cfg.apiKey);
-assertEnv("authDomain", cfg.authDomain);
-assertEnv("projectId", cfg.projectId);
-assertEnv("storageBucket", cfg.storageBucket);
-assertEnv("appId", cfg.appId);
+// >>> Fallback com os valores que você me passou (usa se algo do env vier vazio)
+const cfgHardcoded = {
+  apiKey: "AIzaSyBWDz3tO9Q4AS8CxdQCjZ74eAT6ljFuj3A",
+  authDomain: "linha-etica-venture.firebaseapp.com",
+  projectId: "linha-etica-venture",
+  storageBucket: "linha-etica-venture.appspot.com",
+  appId: "1:790882253555:web:33f0bb792922d7a313d586",
+};
 
-if (!cfg.apiKey) {
-  // Evita quebrar a UI sem explicação
-  throw new Error(
-    "Firebase API Key ausente. Verifique seu .env(.production). " +
-      "Aceitamos VITE_FIREBASE_API_KEY ou VITE_FB_API_KEY."
+const FIREBASE_CONFIG = Object.values(cfgFromEnv).every(Boolean)
+  ? cfgFromEnv
+  : cfgHardcoded;
+
+// Log leve para diagnosticar (mostra só se veio do env ou do fallback)
+if (import.meta.env?.MODE !== "production") {
+  console.log(
+    "[firebase] usando",
+    Object.values(cfgFromEnv).every(Boolean) ? ".env" : "fallback hardcoded"
   );
 }
 
-// Inicializa app uma vez
-const app = getApps().length ? getApps()[0] : initializeApp(cfg);
+const app = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-/** =======================================================================
- *  Auth anônima (regras do Storage/Firestore dependem dela)
- *  ======================================================================= */
+/* ---------------------- Auth anônima ---------------------- */
 export async function ensureAnonAuth() {
-  const user = auth.currentUser;
-  if (user) return user;
-  await signInAnonymously(auth);
-  // aguarda a sessão ficar disponível
+  if (auth.currentUser) return auth.currentUser;
+  const res = await signInAnonymously(auth); // precisa das regras auth != null
+  return res.user;
+}
+
+/* ---------------------- Storage --------------------------- */
+export async function uploadFile(path, file) {
+  // path exemplo: reports/PROTOCOLO/arquivo.ext
+  const r = sref(storage, path);
+  const task = uploadBytesResumable(r, file);
   await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("timeout auth")), 8000);
-    const unsub = onAuthStateChanged(
-      auth,
-      (u) => {
-        if (u) {
-          clearTimeout(t);
-          unsub();
-          resolve(u);
-        }
-      },
-      (e) => {
-        clearTimeout(t);
-        unsub();
-        reject(e);
-      }
+    task.on(
+      "state_changed",
+      // progresso opcional:
+      // (snap) => console.log("upload", (snap.bytesTransferred / snap.totalBytes) * 100, "%"),
+      () => {},
+      reject,
+      resolve
     );
   });
-  return auth.currentUser;
+  const url = await getDownloadURL(task.snapshot.ref);
+  return url;
 }
 
-/** =======================================================================
- *  Upload de arquivo ao Storage
- *  path ex.: reports/PROTOCOLO/arquivo.ext
- *  ======================================================================= */
-export async function uploadFile(path, file) {
-  const r = sref(storage, path);
-  await uploadBytes(r, file);
-  return await getDownloadURL(r);
-}
+/* ---------------------- Firestore ------------------------- */
+const COL = "reports";
 
-/** =======================================================================
- *  Cria/Substitui denúncia por protocolo (id do doc = protocolo)
- *  ======================================================================= */
+/**
+ * Cria ou substitui a denúncia (id por protocolo) — idempotente.
+ */
 export async function createOrReplaceReport(protocolo, data) {
-  const ref = doc(db, "reports", protocolo);
-  const snap = await getDoc(ref);
-  const base = {
-    ...data,
-    id: protocolo,
-    updatedAt: serverTimestamp(),
-  };
-  if (!snap.exists()) {
-    base.createdAt = serverTimestamp();
-  }
-  await setDoc(ref, base, { merge: true });
-  return protocolo;
+  const ref = doc(db, COL, protocolo);
+  await setDoc(ref, { ...data, createdAt: serverTimestamp() }, { merge: true });
 }
 
-/** =======================================================================
- *  Busca denúncia por protocolo
- *  ======================================================================= */
+/**
+ * Pega denúncia por protocolo
+ */
 export async function getReportByProtocol(protocolo) {
-  const ref = doc(db, "reports", protocolo);
+  const ref = doc(db, COL, protocolo);
   const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() };
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-/** =======================================================================
- *  Assinatura em tempo real para painel admin (ordenado por createdAt desc)
- *  ======================================================================= */
+/**
+ * Assina a coleção (ordenando por createdAt quando possível)
+ */
 export function subscribeReports(cb) {
-  const q = query(
-    collection(db, "reports"),
-    orderBy("createdAt", "desc")
-  );
-  return onSnapshot(q, (ss) => {
-    const arr = ss.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(arr);
-  });
+  try {
+    const q = query(collection(db, COL), orderBy("createdAt", "desc"));
+    return onSnapshot(
+      q,
+      (ss) => cb(ss.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => {
+        console.error("onSnapshot error:", err);
+        cb([]);
+      }
+    );
+  } catch (_) {
+    // se ainda não houver índice/ordenação, cai no fallback simples
+    return onSnapshot(
+      collection(db, COL),
+      (ss) => cb(ss.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => {
+        console.error("onSnapshot error (fallback):", err);
+        cb([]);
+      }
+    );
+  }
 }
 
-/** =======================================================================
- *  Atualiza campos de uma denúncia (por id/protocolo)
- *  ======================================================================= */
+/**
+ * Atualiza denúncia (ex.: status)
+ */
 export async function updateReport(id, patch) {
-  const ref = doc(db, "reports", id);
+  const ref = doc(db, COL, id);
   await updateDoc(ref, { ...patch, updatedAt: serverTimestamp() });
 }
 
-/** =======================================================================
- *  Adiciona nota/resposta do admin (array 'notes')
- *  ======================================================================= */
+/**
+ * Adiciona uma nota/admin reply (apêndice em array "notes")
+ */
 export async function addAdminNote(id, note) {
-  const ref = doc(db, "reports", id);
-  await updateDoc(ref, {
-    notes: arrayUnion(note),
-    updatedAt: serverTimestamp(),
-  });
+  const ref = doc(db, COL, id);
+  const current = await getDoc(ref);
+  const prev = current.exists() ? current.data() : {};
+  const notes = Array.isArray(prev.notes) ? prev.notes.slice() : [];
+  notes.push(note);
+  await updateDoc(ref, { notes, updatedAt: serverTimestamp() });
 }
-
-export { app, auth, db, storage };

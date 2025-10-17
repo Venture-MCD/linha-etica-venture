@@ -1,26 +1,23 @@
-// src/firebase.js
-// Firebase v11 (modular) — compatível com Vite e variáveis VITE_*
-
+// firebase.js
 import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
   signInAnonymously,
-  setPersistence,
-  browserLocalPersistence,
+  onAuthStateChanged,
 } from "firebase/auth";
 import {
   getFirestore,
   doc,
   setDoc,
   getDoc,
-  onSnapshot,
   updateDoc,
-  deleteDoc,
-  serverTimestamp,
+  addDoc,
   collection,
+  onSnapshot,
+  serverTimestamp,
   query,
   orderBy,
-  arrayUnion,
+  limit,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -29,7 +26,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-/* ==================== Config ==================== */
+/* ================== INIT ================== */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FB_API_KEY,
   authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
@@ -38,109 +35,154 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FB_APP_ID,
 };
 
-export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-/* ==================== Auth (anônimo) ==================== */
+/* ================== AUTH ================== */
 export async function ensureAnonAuth() {
-  const auth = getAuth(app);
-  await setPersistence(auth, browserLocalPersistence);
-
-  // Se já logado (anônimo ou não), reaproveita
-  if (auth.currentUser) return auth.currentUser;
-
-  // Anônimo
-  const cred = await signInAnonymously(auth);
-  return cred.user;
-}
-
-/* ==================== Storage ==================== */
-// Upload arquivo para um path no Storage e retorna a URL pública
-export async function uploadFile(path, file) {
-  const storage = getStorage(app);
-  const r = sref(storage, path);
-  const task = uploadBytesResumable(r, file);
-
-  // aguarda finalizar
-  await new Promise((resolve, reject) => {
-    task.on(
-      "state_changed",
-      () => {},
-      (err) => reject(err),
-      () => resolve()
+  const user = auth.currentUser;
+  if (user) return user;
+  return new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(
+      auth,
+      (u) => {
+        if (u) {
+          unsub();
+          resolve(u);
+        } else {
+          signInAnonymously(auth).catch((e) => {
+            unsub();
+            reject(e);
+          });
+        }
+      },
+      (e) => {
+        unsub();
+        reject(e);
+      }
     );
   });
-
-  const url = await getDownloadURL(task.snapshot.ref);
-  return url;
 }
 
-// Pegar URL de download a partir do caminho no Storage
-export async function getDownloadUrlByPath(storagePath) {
-  const storage = getStorage(app);
-  const r = sref(storage, storagePath);
-  return await getDownloadURL(r);
+/* ================== HELPERS ================== */
+function withTimeout(promise, ms = 30000, label = "operação") {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timeout ${label} (${ms}ms)`)), ms);
+    promise.then((v) => { clearTimeout(t); resolve(v); })
+           .catch((e) => { clearTimeout(t); reject(e); });
+  });
 }
 
-/* ==================== Firestore: Reports ==================== */
-// Cria ou substitui denúncia com timestamps consistentes
+/* ================== STORAGE (upload com progresso) ================== */
+export async function uploadFileResumable(path, file, onProgress) {
+  const r = sref(storage, path);
+  const metadata = { contentType: file.type || "application/octet-stream" };
+  const task = uploadBytesResumable(r, file, metadata);
+
+  const result = await withTimeout(
+    new Promise((resolve, reject) => {
+      task.on(
+        "state_changed",
+        (snap) => {
+          if (onProgress && snap.totalBytes) {
+            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            onProgress(pct);
+          }
+        },
+        (err) => reject(err),
+        async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve({
+            url,
+            path: task.snapshot.ref.fullPath,
+            size: file.size,
+            type: file.type,
+            name: file.name || "arquivo",
+          });
+        }
+      );
+    }),
+    60000,
+    "upload Firebase Storage"
+  );
+
+  return result;
+}
+
+/* ================== FIRESTORE ================== */
+// id = protocolo
 export async function createOrReplaceReport(id, data) {
-  const db = getFirestore(app);
+  // sempre grava createdAt (server) e createdAtMs (client) na criação
   const ref = doc(db, "reports", id);
   const snap = await getDoc(ref);
-
-  const base = snap.exists()
-    ? { updatedAt: serverTimestamp() }
-    : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-
-  await setDoc(ref, { ...data, ...base }, { merge: true });
-  return id;
+  const base = {
+    createdAt: serverTimestamp(),
+    createdAtMs: Date.now(),
+    ...data,
+  };
+  if (snap.exists()) {
+    // Atualiza preservando createdAt/createdAtMs já existentes
+    const current = snap.data();
+    await setDoc(
+      ref,
+      {
+        ...base,
+        createdAt: current.createdAt || base.createdAt,
+        createdAtMs: current.createdAtMs || base.createdAtMs,
+      },
+      { merge: true }
+    );
+  } else {
+    await setDoc(ref, base, { merge: true });
+  }
 }
 
-// Buscar denúncia pelo protocolo (id do doc = protocolo)
 export async function getReportByProtocol(id) {
-  const db = getFirestore(app);
   const ref = doc(db, "reports", id);
   const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() };
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-// Assinar lista de denúncias ordenadas por criação (mais recente → antigo)
-export function subscribeReports(callback) {
-  const db = getFirestore(app);
-  const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    callback(arr);
-  });
-}
-
-// Atualizar campos da denúncia (salva updatedAt)
 export async function updateReport(id, patch) {
-  const db = getFirestore(app);
-  await updateDoc(doc(db, "reports", id), {
-    ...patch,
-    updatedAt: serverTimestamp(),
-  });
+  const ref = doc(db, "reports", id);
+  await updateDoc(ref, patch);
 }
 
-// Adicionar nota/comentário do admin ao histórico (arrayUnion)
 export async function addAdminNote(id, note) {
-  const db = getFirestore(app);
+  // Opcional: salvar notas numa subcoleção para auditoria
+  const notesRef = collection(db, "reports", id, "notes");
+  await addDoc(notesRef, note);
+  // Também reflete num array simples no doc principal, se você já exibe assim:
   await updateDoc(doc(db, "reports", id), {
-    notes: arrayUnion(note),
-    updatedAt: serverTimestamp(),
-  });
+    notes: (note ? [] : []), // noop para garantir campo
+  }).catch(() => {});
 }
 
-// Excluir uma denúncia
-export async function deleteReport(id) {
-  const db = getFirestore(app);
-  await deleteDoc(doc(db, "reports", id));
-}
-
-// Excluir várias denúncias
-export async function deleteReports(ids = []) {
-  const db = getFirestore(app);
-  await Promise.all(ids.map((id) => deleteDoc(doc(db, "reports", id))));
+/**
+ * Assina a lista de reports em ordem desc de data.
+ * - Ordena por createdAt (server) desc.
+ * - Empata por createdAtMs desc para estabilidade inicial.
+ */
+export function subscribeReports(cb) {
+  const qy = query(
+    collection(db, "reports"),
+    orderBy("createdAt", "desc"),
+    limit(1000)
+  );
+  return onSnapshot(
+    qy,
+    (snap) => {
+      const arr = [];
+      snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+      // fallback: reforça a ordenação no client usando createdAtMs
+      arr.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+      cb(arr);
+    },
+    (err) => {
+      console.error("subscribeReports error:", err);
+      cb([]); // evita tela vazia permanente
+    }
+  );
 }

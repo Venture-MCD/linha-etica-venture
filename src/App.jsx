@@ -11,6 +11,8 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
+// Mantém como está no seu projeto atual
+import ventureLogo from "./logo-venture.png";
 
 import {
   ensureAnonAuth,

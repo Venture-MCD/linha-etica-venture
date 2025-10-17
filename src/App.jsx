@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   FileText,
   Search,
@@ -735,15 +735,42 @@ function AdminPanel() {
   const allSelected = selected.size > 0 && selected.size === lista.length;
   const anySelected = selected.size > 0;
 
-  // Assina Firestore (já vem ordenado por createdAt desc — vide firebase.js)
+  // ref para o bloco de detalhes (fica logo abaixo dos filtros)
+  const detailRef = useRef(null);
+
+  // helper: normaliza Timestamp/Date/string -> millis
+  const tsToMs = (ts) => {
+    if (!ts) return 0;
+    try {
+      if (ts?.toDate) ts = ts.toDate();
+      if (typeof ts === "string" || typeof ts === "number") ts = new Date(ts);
+      return ts.getTime?.() || 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  // Assina Firestore (já vem por createdAt desc, mas reforçamos sort com fallback)
   useEffect(() => {
     const unsub = subscribeReports((arr) => {
-      setLista(arr);
-      // remove da seleção ids que não existem mais
-      setSelected(prev => new Set([...prev].filter(id => arr.find(x => x.id === id))));
+      const sorted = [...arr].sort((a, b) => {
+        const aMs = tsToMs(a.createdAt) || tsToMs(a.updatedAt);
+        const bMs = tsToMs(b.createdAt) || tsToMs(b.updatedAt);
+        return bMs - aMs; // desc
+      });
+      setLista(sorted);
+      // limpa seleção de itens removidos
+      setSelected((prev) => new Set([...prev].filter((id) => sorted.find((x) => x.id === id))));
     });
     return () => unsub && unsub();
   }, []);
+
+  // ao selecionar um item, rola o bloco de detalhes "pra cima"
+  useEffect(() => {
+    if (sel && detailRef.current) {
+      detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [sel]);
 
   const filtro = (c) => {
     if (!q.trim()) return true;
@@ -758,7 +785,7 @@ function AdminPanel() {
     );
   };
 
-  const filtered = lista.filter(filtro); // já vem desc por createdAt
+  const filtered = lista.filter(filtro);
 
   const [novoStatus, setNovoStatus] = useState("Recebido");
   const [resposta, setResposta] = useState("");
@@ -812,7 +839,7 @@ function AdminPanel() {
 
   // seleção helpers
   const toggleOne = (id) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const s = new Set(prev);
       s.has(id) ? s.delete(id) : s.add(id);
       return s;
@@ -820,7 +847,7 @@ function AdminPanel() {
   };
   const toggleAll = () => {
     if (allSelected) setSelected(new Set());
-    else setSelected(new Set(lista.map(x => x.id)));
+    else setSelected(new Set(lista.map((x) => x.id)));
   };
 
   // deletar
@@ -840,20 +867,23 @@ function AdminPanel() {
     const { deleteReport } = await import("./firebase");
     await deleteReport(id);
     setSel(null);
-    setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
+    setSelected((prev) => {
+      const s = new Set(prev);
+      s.delete(id);
+      return s;
+    });
     alert("Denúncia excluída.");
   };
 
   // formatador de datas
   const fmtDate = (ts) => {
     if (!ts) return "-";
-    // Firestore serverTimestamp pode vir como Timestamp
     try {
       if (ts?.toDate) ts = ts.toDate();
       if (typeof ts === "string") ts = new Date(ts);
       const d = ts;
       const pad = (n) => String(n).padStart(2, "0");
-      return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     } catch {
       return "-";
     }
@@ -867,16 +897,17 @@ function AdminPanel() {
           <div className="text-xs text-slate-500">Registros em tempo real • Ordenado por data (recente → antigo)</div>
         </div>
 
+        {/* Filtros / ações */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <input
-            className={inputClass}
+            className="w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600"
             placeholder="Buscar por protocolo, unidade, categoria, descrição…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <a href="#/" className={btnOutline}>Home</a>
+          <a href="#/" className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50">Home</a>
           <button
-            className={`${btnOutline} ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
+            className={`w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
             disabled={!anySelected}
             onClick={onDeleteSelected}
             title="Excluir selecionados"
@@ -884,6 +915,150 @@ function AdminPanel() {
             Excluir selecionados
           </button>
         </div>
+
+        {/* ======== Detalhe AGORA fica logo abaixo dos filtros ======== */}
+        {sel && (
+          <div ref={detailRef} className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm text-slate-500">Protocolo</div>
+                <div className="font-mono font-semibold">{sel.id}</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Criado em: {fmtDate(sel.createdAt)} {sel.updatedAt ? `• Atualizado: ${fmtDate(sel.updatedAt)}` : ""}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(null)}>
+                  fechar
+                </button>
+                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(sel.id)}>
+                  excluir
+                </button>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-3 mt-2">
+              <div>
+                <div className="text-xs text-slate-500">Unidade</div>
+                <div>{sel.unidade}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Categoria</div>
+                <div>{sel.categoria}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Onde</div>
+                <div>{sel.perguntas?.onde || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Quando</div>
+                <div>{sel.perguntas?.periodo?.data || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Recorrência</div>
+                <div>{sel.perguntas?.periodicidade || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Impacto financeiro</div>
+                <div>{sel.perguntas?.valorFinanceiro || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Reportado internamente</div>
+                <div>
+                  {sel.perguntas?.foiReportado === "sim"
+                    ? `Sim (${sel.perguntas?.paraQuem || "—"})`
+                    : "Não"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Anonimato</div>
+                <div>{sel.anonimo ? "Sim" : "Não"}</div>
+              </div>
+
+              {/* >>> MOSTRAR CONTATO QUANDO NÃO FOR ANÔNIMO <<< */}
+              {!sel.anonimo && sel.contato && (
+                <div className="md:col-span-2">
+                  <div className="text-xs text-slate-500">Contato do denunciante</div>
+                  <div className="text-sm">
+                    {sel.contato.nome ? <div><strong>Nome:</strong> {sel.contato.nome}</div> : null}
+                    {sel.contato.email ? <div><strong>Email:</strong> {sel.contato.email}</div> : null}
+                    {sel.contato.telefone ? <div><strong>Telefone:</strong> {sel.contato.telefone}</div> : null}
+                    {sel.contato.prefer ? <div><strong>Preferência:</strong> {sel.contato.prefer}</div> : null}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3">
+              <div className="text-xs text-slate-500">Descrição</div>
+              <div
+                className="whitespace-pre-wrap max-w-full"
+                style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+              >
+                {sel.descricao}
+              </div>
+            </div>
+
+            {Array.isArray(sel.anexos) && (
+              <div className="mt-3">
+                <div className="text-xs text-slate-500">Anexos</div>
+                {sel.anexos.length === 0 ? (
+                  <div>-</div>
+                ) : (
+                  <ul className="list-disc pl-5">
+                    {sel.anexos.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAttachment(f)}
+                          className="text-emerald-700 underline hover:no-underline"
+                          title="Abrir anexo"
+                        >
+                          {f.name || "Arquivo"}
+                        </button>
+                        <span className="text-xs text-slate-500">
+                          {typeof f.size === "number" ? `(${Math.round(f.size / 1024)} KB)` : ""}
+                          {f.type ? ` — ${f.type}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Ações admin */}
+            <div className="mt-4 grid md:grid-cols-2 gap-3">
+              <div className="rounded-xl border p-5 md:p-6 bg-white shadow space-y-2">
+                <div className="font-medium">Alterar status</div>
+                <div className="relative">
+                  <select
+                    className="w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                    value={novoStatus}
+                    onChange={(e) => setNovoStatus(e.target.value)}
+                  >
+                    <option>Recebido</option>
+                    <option>Em análise</option>
+                    <option>Em contato</option>
+                    <option>Concluído</option>
+                  </select>
+                </div>
+                <button onClick={salvarStatus} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">Salvar status</button>
+              </div>
+
+              <div className="rounded-xl border p-5 md:p-6 bg-white shadow space-y-2">
+                <div className="font-medium">Adicionar resposta / comentário</div>
+                <textarea
+                  className="w-full rounded-lg border p-3 min-h-[100px]"
+                  value={resposta}
+                  onChange={(e) => setResposta(e.target.value)}
+                  placeholder="Mensagem para histórico (visível no acompanhamento)"
+                />
+                <button onClick={enviarResposta} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">Salvar resposta</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Lista MOBILE */}
         <div className="grid md:hidden gap-3">
@@ -915,8 +1090,8 @@ function AdminPanel() {
                 {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
               </div>
               <div className="flex gap-2 pt-1">
-                <button className={btnOutline} onClick={() => setSel(c)}>Detalhes</button>
-                <button className={btnOutline} onClick={() => onDeleteOne(c.id)}>Excluir</button>
+                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
+                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
               </div>
             </div>
           ))}
@@ -974,8 +1149,8 @@ function AdminPanel() {
                   <td className="p-2 border-b">{c.anexos?.length || 0}</td>
                   <td className="p-2 border-b">
                     <div className="flex gap-2">
-                      <button className={btnOutline} onClick={() => setSel(c)}>Detalhes</button>
-                      <button className={btnOutline} onClick={() => onDeleteOne(c.id)}>Excluir</button>
+                      <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
+                      <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
                     </div>
                   </td>
                 </tr>
@@ -983,146 +1158,6 @@ function AdminPanel() {
             </tbody>
           </table>
         </div>
-
-        {/* Detalhes */}
-        {sel && (
-          <div className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm text-slate-500">Protocolo</div>
-                <div className="font-mono font-semibold">{sel.id}</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  Criado em: {fmtDate(sel.createdAt)} {sel.updatedAt ? `• Atualizado: ${fmtDate(sel.updatedAt)}` : ""}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button className={btnOutline} onClick={() => setSel(null)}>
-                  fechar
-                </button>
-                <button className={btnOutline} onClick={() => onDeleteOne(sel.id)}>
-                  excluir
-                </button>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-3 mt-2">
-              <div>
-                <div className="text-xs text-slate-500">Unidade</div>
-                <div>{sel.unidade}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Categoria</div>
-                <div>{sel.categoria}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Onde</div>
-                <div>{sel.perguntas?.onde || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Quando</div>
-                <div>{sel.perguntas?.periodo?.data || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Recorrência</div>
-                <div>{sel.perguntas?.periodicidade || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Impacto financeiro</div>
-                <div>{sel.perguntas?.valorFinanceiro || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Reportado internamente</div>
-                <div>
-                  {sel.perguntas?.foiReportado === "sim"
-                    ? `Sim (${sel.perguntas?.paraQuem || "—"})`
-                    : "Não"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Anonimato</div>
-                <div>{sel.anonimo ? "Sim" : "Não"}</div>
-              </div>
-            </div>
-
-            <div className="mt-3">
-              <div className="text-xs text-slate-500">Descrição</div>
-              <div
-                className="whitespace-pre-wrap max-w-full"
-                style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
-              >
-                {sel.descricao}
-              </div>
-            </div>
-
-            {Array.isArray(sel.anexos) && (
-              <div className="mt-3">
-                <div className="text-xs text-slate-500">Anexos</div>
-                {sel.anexos.length === 0 ? (
-                  <div>-</div>
-                ) : (
-                  <ul className="list-disc pl-5">
-                    {sel.anexos.map((f, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAttachment(f)}
-                          className="text-emerald-700 underline hover:no-underline"
-                          title="Abrir anexo"
-                        >
-                          {f.name || "Arquivo"}
-                        </button>
-                        <span className="text-xs text-slate-500">
-                          {typeof f.size === "number" ? `(${Math.round(f.size / 1024)} KB)` : ""}
-                          {f.type ? ` — ${f.type}` : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            {/* Ações admin */}
-            <div className="mt-4 grid md:grid-cols-2 gap-3">
-              <Card className="space-y-2">
-                <div className="font-medium">Alterar status</div>
-                <SelectBase value={novoStatus} onChange={(e) => setNovoStatus(e.target.value)}>
-                  <option>Recebido</option>
-                  <option>Em análise</option>
-                  <option>Em contato</option>
-                  <option>Concluído</option>
-                </SelectBase>
-                <button onClick={salvarStatus} className={btnPrimary}>Salvar status</button>
-              </Card>
-
-              <Card className="space-y-2">
-                <div className="font-medium">Adicionar resposta / comentário</div>
-                <textarea
-                  className="w-full rounded-lg border p-3 min-h-[100px]"
-                  value={resposta}
-                  onChange={(e) => setResposta(e.target.value)}
-                  placeholder="Mensagem para histórico (visível no acompanhamento)"
-                />
-                <button onClick={enviarResposta} className={btnPrimary}>Salvar resposta</button>
-              </Card>
-            </div>
-
-            {/* Histórico de respostas */}
-            {!!(sel.notes?.length) && (
-              <div className="mt-4">
-                <div className="text-xs text-slate-500 mb-1">Histórico</div>
-                <ul className="space-y-2">
-                  {sel.notes.map((n, idx) => (
-                    <li key={idx} className="rounded border p-2 bg-white">
-                      <div className="text-xs text-slate-500">{n.at} — {n.by || "Admin"}</div>
-                      <div className="whitespace-pre-wrap">{n.text}</div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
       </Card>
       <AvisosSeguranca />
     </section>

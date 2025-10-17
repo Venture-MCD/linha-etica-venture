@@ -11,8 +11,6 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
-// Mantém como está no seu projeto atual
-import ventureLogo from "./logo-venture.png";
 
 import {
   ensureAnonAuth,
@@ -29,6 +27,9 @@ const POLICY_VERSION = "1.0";
 const POLICY_UPDATED = "09/10/2025";
 const CONSENT_KEY = "consent_ok";
 const ADMIN_PASS = "Venture@4266";
+const BASE = import.meta.env.BASE_URL || "/";
+const LOGO_FILE = "logo-venture.png"; // troque p/ "logo-venture.jpeg" se o arquivo for jpeg
+const logoUrl = new URL(LOGO_FILE, BASE).href;
 
 /* ==================== Helpers visuais ==================== */
 const Field = ({ label, required, hint, children }) => (

@@ -724,9 +724,10 @@ function FAQ() {
   );
 }
 
-/* ==================== ADMIN (com Firestore) ==================== */
+/* ==================== ADMIN (com Firestore + filtros + export + dashboard) ==================== */
 function AdminPanel() {
   const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todos");
   const [lista, setLista] = useState([]);
   const [sel, setSel] = useState(null);
 
@@ -750,7 +751,7 @@ function AdminPanel() {
     }
   };
 
-  // Assina Firestore (já vem por createdAt desc, mas reforçamos sort com fallback)
+  // Assina Firestore (ordem garantida + fallback)
   useEffect(() => {
     const unsub = subscribeReports((arr) => {
       const sorted = [...arr].sort((a, b) => {
@@ -772,7 +773,8 @@ function AdminPanel() {
     }
   }, [sel]);
 
-  const filtro = (c) => {
+  // busca textual
+  const filtroTexto = (c) => {
     if (!q.trim()) return true;
     const s = q.toLowerCase();
     return (
@@ -785,7 +787,14 @@ function AdminPanel() {
     );
   };
 
-  const filtered = lista.filter(filtro);
+  // filtro por status
+  const filtroStatus = (c) => {
+    if (statusFilter === "todos") return true;
+    const st = (c.status || "").toLowerCase();
+    return st === statusFilter.toLowerCase();
+  };
+
+  const filtered = lista.filter((c) => filtroTexto(c) && filtroStatus(c));
 
   const [novoStatus, setNovoStatus] = useState("Recebido");
   const [resposta, setResposta] = useState("");
@@ -829,7 +838,6 @@ function AdminPanel() {
           return;
         }
       }
-
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Erro ao abrir anexo:", err);
@@ -889,34 +897,278 @@ function AdminPanel() {
     }
   };
 
+  /* ==================== Dashboard (sobre 'filtered') ==================== */
+  const countBy = (arr, keyFn) =>
+    arr.reduce((acc, x) => {
+      const k = keyFn(x) || "-";
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+
+  const total = filtered.length;
+  const porStatus = countBy(filtered, (x) => (x.status || "Sem status"));
+  const porCategoria = countBy(filtered, (x) => x.categoria);
+  const porUnidade = countBy(filtered, (x) => x.unidade);
+
+  const maxVal = Math.max(
+    1,
+    ...Object.values(porStatus),
+    ...Object.values(porCategoria),
+    ...Object.values(porUnidade)
+  );
+
+  const BarList = ({ title, data }) => (
+    <div className="rounded-xl border p-4 bg-white shadow space-y-2">
+      <div className="font-medium">{title}</div>
+      <div className="space-y-2">
+        {Object.entries(data).sort((a,b)=>b[1]-a[1]).map(([k, v]) => (
+          <div key={k}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-600">{k}</span>
+              <span className="text-slate-500">{v}</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded">
+              <div
+                className="h-2 bg-emerald-600 rounded"
+                style={{ width: `${(v / maxVal) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+        {Object.keys(data).length === 0 && (
+          <div className="text-xs text-slate-500">Sem dados no filtro atual.</div>
+        )}
+      </div>
+    </div>
+  );
+
+  /* ==================== Exportação ==================== */
+  function toCSV(rows) {
+    const header = [
+      "protocolo",
+      "createdAt",
+      "updatedAt",
+      "unidade",
+      "categoria",
+      "onde",
+      "quando",
+      "periodicidade",
+      "impactoFinanceiro",
+      "reportado",
+      "paraQuem",
+      "anonimo",
+      "contato.nome",
+      "contato.email",
+      "contato.telefone",
+      "contato.prefer",
+      "status",
+      "descricao",
+      "anexos(qtd)"
+    ];
+    const esc = (v) => {
+      if (v === null || v === undefined) return "";
+      const s = String(v).replace(/"/g, '""');
+      return `"${s}"`;
+    };
+    const lines = [header.join(",")];
+
+    rows.forEach((c) => {
+      const line = [
+        c.id || "",
+        fmtDate(c.createdAt),
+        fmtDate(c.updatedAt),
+        c.unidade || "",
+        c.categoria || "",
+        c.perguntas?.onde || "",
+        c.perguntas?.periodo?.data || "",
+        c.perguntas?.periodicidade || "",
+        c.perguntas?.valorFinanceiro || "",
+        c.perguntas?.foiReportado || "",
+        c.perguntas?.paraQuem || "",
+        c.anonimo ? "Sim" : "Não",
+        c.contato?.nome || "",
+        c.contato?.email || "",
+        c.contato?.telefone || "",
+        c.contato?.prefer || "",
+        c.status || "",
+        c.descricao || "",
+        Array.isArray(c.anexos) ? c.anexos.length : 0,
+      ].map(esc);
+      lines.push(line.join(","));
+    });
+    return lines.join("\r\n");
+  }
+
+  function downloadFile(name, mime, content) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const exportCSVFiltered = () => {
+    const csv = toCSV(filtered);
+    downloadFile(`denuncias_filtrado_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
+  };
+
+  const exportCSVSelected = () => {
+    if (!anySelected) {
+      alert("Selecione pelo menos uma denúncia para exportar.");
+      return;
+    }
+    const rows = filtered.filter((c) => selected.has(c.id));
+    const csv = toCSV(rows);
+    downloadFile(`denuncias_selecionadas_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
+  };
+
+  // "Exportar PDF" via impressão (abre uma janela com HTML e chama window.print)
+  const exportPDFFiltered = () => {
+    const rows = filtered;
+    const htmlRows = rows
+      .map(
+        (c) => `
+        <tr>
+          <td>${c.id || ""}</td>
+          <td>${fmtDate(c.createdAt)}</td>
+          <td>${c.unidade || ""}</td>
+          <td>${c.categoria || ""}</td>
+          <td>${(c.perguntas?.onde || "").replace(/</g,"&lt;")}</td>
+          <td>${c.status || ""}</td>
+        </tr>`
+      )
+      .join("");
+
+    const win = window.open("", "_blank");
+    win.document.write(`
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Denúncias (filtrado)</title>
+        <style>
+          body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding:16px; }
+          h1 { font-size: 18px; margin: 0 0 12px; }
+          table { width:100%; border-collapse: collapse; font-size:12px; }
+          th, td { border:1px solid #ddd; padding:6px 8px; text-align:left; }
+          th { background:#f5f7fa; }
+        </style>
+      </head>
+      <body>
+        <h1>Denúncias — filtrado (${rows.length})</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>Protocolo</th>
+              <th>Data</th>
+              <th>Unidade</th>
+              <th>Categoria</th>
+              <th>Onde</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>${htmlRows}</tbody>
+        </table>
+        <script>window.print();</script>
+      </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h3 className="text-lg font-semibold">Painel (Firestore)</h3>
-          <div className="text-xs text-slate-500">Registros em tempo real • Ordenado por data (recente → antigo)</div>
+          <div className="text-xs text-slate-500">
+            Registros em tempo real • Ordenado por data (recente → antigo)
+          </div>
         </div>
 
         {/* Filtros / ações */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <input
-            className="w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600"
-            placeholder="Buscar por protocolo, unidade, categoria, descrição…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <a href="#/" className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50">Home</a>
-          <button
-            className={`w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
-            disabled={!anySelected}
-            onClick={onDeleteSelected}
-            title="Excluir selecionados"
-          >
-            Excluir selecionados
-          </button>
+        <div className="grid md:grid-cols-12 gap-2">
+          <div className="md:col-span-5">
+            <input
+              className="w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              placeholder="Buscar por protocolo, unidade, categoria, descrição…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="md:col-span-3">
+            <div className="relative">
+              <select
+                className="w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                title="Filtrar por status"
+              >
+                <option value="todos">Todos os status</option>
+                <option value="Recebido">Recebido</option>
+                <option value="Em análise">Em análise</option>
+                <option value="Em contato">Em contato</option>
+                <option value="Concluído">Concluído</option>
+              </select>
+              <svg aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.17l3.71-2.94a.75.75 0 1 1 .94 1.16l-4.24 3.36a.75.75 0 0 1-.94 0L5.21 8.39a.75.75 0 0 1 .02-1.18z" />
+              </svg>
+            </div>
+          </div>
+          <div className="md:col-span-4 flex flex-wrap gap-2">
+            <a href="#/" className="px-4 py-3 rounded-lg border hover:bg-slate-50">Home</a>
+            <button
+              className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
+              disabled={!anySelected}
+              onClick={onDeleteSelected}
+              title="Excluir selecionados"
+            >
+              Excluir selecionados
+            </button>
+            <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={exportCSVFiltered}>
+              Exportar CSV (filtro)
+            </button>
+            <button
+              className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
+              disabled={!anySelected}
+              onClick={exportCSVSelected}
+            >
+              CSV (selecionados)
+            </button>
+            <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={exportPDFFiltered}>
+              PDF (imprimir)
+            </button>
+          </div>
         </div>
 
-        {/* ======== Detalhe AGORA fica logo abaixo dos filtros ======== */}
+        {/* ======== Dashboard (com base no FILTRO atual) ======== */}
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">Total (filtro atual)</div>
+            <div className="text-2xl font-bold">{total}</div>
+          </div>
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">Com anexos</div>
+            <div className="text-2xl font-bold">
+              {filtered.filter((x) => (Array.isArray(x.anexos) ? x.anexos.length > 0 : false)).length}
+            </div>
+          </div>
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">Identificadas</div>
+            <div className="text-2xl font-bold">
+              {filtered.filter((x) => !x.anonimo).length}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-3">
+          <BarList title="Por status" data={porStatus} />
+          <BarList title="Por categoria" data={porCategoria} />
+          <BarList title="Por unidade" data={porUnidade} />
+        </div>
+
+        {/* ======== Detalhe AGORA fica logo abaixo do dashboard ======== */}
         {sel && (
           <div ref={detailRef} className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
@@ -928,10 +1180,10 @@ function AdminPanel() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(null)}>
+                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(null)}>
                   fechar
                 </button>
-                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(sel.id)}>
+                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(sel.id)}>
                   excluir
                 </button>
               </div>
@@ -975,7 +1227,6 @@ function AdminPanel() {
                 <div>{sel.anonimo ? "Sim" : "Não"}</div>
               </div>
 
-              {/* >>> MOSTRAR CONTATO QUANDO NÃO FOR ANÔNIMO <<< */}
               {!sel.anonimo && sel.contato && (
                 <div className="md:col-span-2">
                   <div className="text-xs text-slate-500">Contato do denunciante</div>
@@ -1090,8 +1341,8 @@ function AdminPanel() {
                 {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
               </div>
               <div className="flex gap-2 pt-1">
-                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
-                <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
+                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
+                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
               </div>
             </div>
           ))}
@@ -1149,8 +1400,8 @@ function AdminPanel() {
                   <td className="p-2 border-b">{c.anexos?.length || 0}</td>
                   <td className="p-2 border-b">
                     <div className="flex gap-2">
-                      <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
-                      <button className="w-full md:w-auto px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
+                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
+                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
                     </div>
                   </td>
                 </tr>

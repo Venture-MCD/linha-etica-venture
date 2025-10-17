@@ -730,9 +730,18 @@ function AdminPanel() {
   const [lista, setLista] = useState([]);
   const [sel, setSel] = useState(null);
 
-  // Assina Firestore
+  // seleção (lote)
+  const [selected, setSelected] = useState(new Set());
+  const allSelected = selected.size > 0 && selected.size === lista.length;
+  const anySelected = selected.size > 0;
+
+  // Assina Firestore (já vem ordenado por createdAt desc — vide firebase.js)
   useEffect(() => {
-    const unsub = subscribeReports((arr) => setLista(arr));
+    const unsub = subscribeReports((arr) => {
+      setLista(arr);
+      // remove da seleção ids que não existem mais
+      setSelected(prev => new Set([...prev].filter(id => arr.find(x => x.id === id))));
+    });
     return () => unsub && unsub();
   }, []);
 
@@ -749,7 +758,7 @@ function AdminPanel() {
     );
   };
 
-  const filtered = lista.filter(filtro);
+  const filtered = lista.filter(filtro); // já vem desc por createdAt
 
   const [novoStatus, setNovoStatus] = useState("Recebido");
   const [resposta, setResposta] = useState("");
@@ -763,7 +772,7 @@ function AdminPanel() {
 
   const salvarStatus = async () => {
     if (!sel) return;
-    await updateReport(sel.id, { status: novoStatus });
+    await updateReport(sel.id, { status: novoStatus, updatedAt: new Date().toISOString() });
     alert("Status atualizado.");
   };
 
@@ -778,7 +787,7 @@ function AdminPanel() {
     alert("Resposta adicionada ao histórico.");
   };
 
-  // Abre anexo: usa URL se já existir; se não, resolve via path -> getDownloadURL
+  // abrir anexo (url ou path)
   async function handleOpenAttachment(f) {
     try {
       let url = (f && typeof f.url === "string" ? f.url : "") || "";
@@ -786,7 +795,6 @@ function AdminPanel() {
 
       if (!isHttp) {
         if (f?.path) {
-          // import dinâmico para evitar mexer nos imports do topo
           const { getDownloadUrlByPath } = await import("./firebase");
           url = await getDownloadUrlByPath(f.path);
         } else {
@@ -802,12 +810,61 @@ function AdminPanel() {
     }
   }
 
+  // seleção helpers
+  const toggleOne = (id) => {
+    setSelected(prev => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(lista.map(x => x.id)));
+  };
+
+  // deletar
+  const onDeleteSelected = async () => {
+    if (!anySelected) return;
+    if (!confirm(`Tem certeza que deseja excluir ${selected.size} denúncia(s)? Essa ação não pode ser desfeita.`)) return;
+    const ids = [...selected];
+    const { deleteReports } = await import("./firebase");
+    await deleteReports(ids);
+    setSelected(new Set());
+    setSel(null);
+    alert("Denúncia(s) excluída(s).");
+  };
+
+  const onDeleteOne = async (id) => {
+    if (!confirm("Excluir esta denúncia? Essa ação não pode ser desfeita.")) return;
+    const { deleteReport } = await import("./firebase");
+    await deleteReport(id);
+    setSel(null);
+    setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
+    alert("Denúncia excluída.");
+  };
+
+  // formatador de datas
+  const fmtDate = (ts) => {
+    if (!ts) return "-";
+    // Firestore serverTimestamp pode vir como Timestamp
+    try {
+      if (ts?.toDate) ts = ts.toDate();
+      if (typeof ts === "string") ts = new Date(ts);
+      const d = ts;
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+      return "-";
+    }
+  };
+
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h3 className="text-lg font-semibold">Painel (Firestore)</h3>
-          <div className="text-xs text-slate-500">Registros em tempo real</div>
+          <div className="text-xs text-slate-500">Registros em tempo real • Ordenado por data (recente → antigo)</div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -817,9 +874,15 @@ function AdminPanel() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <a href="#/" className={btnOutline}>
-            Home
-          </a>
+          <a href="#/" className={btnOutline}>Home</a>
+          <button
+            className={`${btnOutline} ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
+            disabled={!anySelected}
+            onClick={onDeleteSelected}
+            title="Excluir selecionados"
+          >
+            Excluir selecionados
+          </button>
         </div>
 
         {/* Lista MOBILE */}
@@ -830,21 +893,30 @@ function AdminPanel() {
             </div>
           )}
           {filtered.map((c) => (
-            <div
-              key={c.id}
-              className="rounded-lg border p-3 bg-white"
-              onClick={() => setSel(c)}
-              role="button"
-            >
-              <div className="flex justify-between gap-2">
-                <div className="font-mono text-sm">{c.id}</div>
-                <div className="text-xs text-slate-500">{c.status || "-"}</div>
+            <div key={c.id} className="rounded-lg border p-3 bg-white space-y-1">
+              <div className="flex items-start justify-between gap-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.id)}
+                    onChange={() => toggleOne(c.id)}
+                  />
+                  <span className="font-mono text-sm">{c.id}</span>
+                </label>
+                <div className="text-xs text-slate-500 text-right">
+                  {fmtDate(c.createdAt)}
+                  <div>{c.status || "-"}</div>
+                </div>
               </div>
-              <div className="text-sm mt-1">
+              <div className="text-sm">
                 <span className="font-medium">{c.unidade}</span> • {c.categoria}
               </div>
-              <div className="text-xs text-slate-600 mt-1">
+              <div className="text-xs text-slate-600">
                 {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button className={btnOutline} onClick={() => setSel(c)}>Detalhes</button>
+                <button className={btnOutline} onClick={() => onDeleteOne(c.id)}>Excluir</button>
               </div>
             </div>
           ))}
@@ -855,36 +927,57 @@ function AdminPanel() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left">
               <tr>
+                <th className="p-2 border-b w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    aria-label="Selecionar todos"
+                  />
+                </th>
                 <th className="p-2 border-b">Protocolo</th>
+                <th className="p-2 border-b">Data/Hora</th>
                 <th className="p-2 border-b">Unidade</th>
                 <th className="p-2 border-b">Categoria</th>
                 <th className="p-2 border-b">Onde</th>
                 <th className="p-2 border-b">Anon.</th>
                 <th className="p-2 border-b">Status</th>
                 <th className="p-2 border-b">Anexos</th>
+                <th className="p-2 border-b w-28">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-3 text-center text-slate-500">
+                  <td colSpan={10} className="p-3 text-center text-slate-500">
                     Sem registros.
                   </td>
                 </tr>
               )}
               {filtered.map((c) => (
-                <tr
-                  key={c.id}
-                  className="hover:bg-slate-50 cursor-pointer"
-                  onClick={() => setSel(c)}
-                >
+                <tr key={c.id} className="hover:bg-slate-50">
+                  <td className="p-2 border-b">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.id)}
+                      onChange={() => toggleOne(c.id)}
+                      aria-label={`Selecionar ${c.id}`}
+                    />
+                  </td>
                   <td className="p-2 border-b font-mono">{c.id}</td>
+                  <td className="p-2 border-b whitespace-nowrap">{fmtDate(c.createdAt)}</td>
                   <td className="p-2 border-b">{c.unidade}</td>
                   <td className="p-2 border-b">{c.categoria}</td>
                   <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
                   <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
                   <td className="p-2 border-b">{c.status || "-"}</td>
                   <td className="p-2 border-b">{c.anexos?.length || 0}</td>
+                  <td className="p-2 border-b">
+                    <div className="flex gap-2">
+                      <button className={btnOutline} onClick={() => setSel(c)}>Detalhes</button>
+                      <button className={btnOutline} onClick={() => onDeleteOne(c.id)}>Excluir</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -898,10 +991,18 @@ function AdminPanel() {
               <div>
                 <div className="text-sm text-slate-500">Protocolo</div>
                 <div className="font-mono font-semibold">{sel.id}</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Criado em: {fmtDate(sel.createdAt)} {sel.updatedAt ? `• Atualizado: ${fmtDate(sel.updatedAt)}` : ""}
+                </div>
               </div>
-              <button className="text-sm underline" onClick={() => setSel(null)}>
-                fechar
-              </button>
+              <div className="flex gap-2">
+                <button className={btnOutline} onClick={() => setSel(null)}>
+                  fechar
+                </button>
+                <button className={btnOutline} onClick={() => onDeleteOne(sel.id)}>
+                  excluir
+                </button>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-3 mt-2">

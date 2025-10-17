@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import {
   FileText,
   Search,
@@ -11,18 +11,15 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
-// Mantém como está no seu projeto atual
-import ventureLogo from "./logo-venture.jpeg";
 
 import {
   ensureAnonAuth,
-  uploadFile,
+  uploadFileResumable,
   createOrReplaceReport,
   getReportByProtocol,
   subscribeReports,
   updateReport,
   addAdminNote,
-  getDownloadUrlByPath, // <— USADO NO PAINEL
 } from "./firebase";
 
 /* ==================== Config & Consts ==================== */
@@ -113,7 +110,8 @@ const Nav = () => {
     <nav className="mb-4 md:mb-6">
       <div className="flex items-center justify-between">
         <a href="#/" className="flex items-center gap-2">
-          <img src={ventureLogo} alt="Venture" className="h-7 w-auto object-contain" />
+          {/* usa logo do /public */}
+          <img src="/logo-venture.png" alt="Venture" className="h-7 w-auto object-contain" />
           <span className="text-base font-semibold tracking-tight">Venture</span>
         </a>
         <div className="hidden md:flex gap-4">
@@ -272,6 +270,46 @@ function Termos() {
   );
 }
 
+/* ============= COMPACTAÇÃO DE IMAGENS (antes do upload) ============= */
+async function compressImageIfNeeded(file, { maxWidth = 1600, maxBytes = 8 * 1024 * 1024, qualityStart = 0.86 } = {}) {
+  // Se não for imagem, retorna original
+  if (!/^image\//.test(file.type)) return file;
+
+  // Se já estiver < 8MB, mantém (ainda assim muitas fotos de celular passam de 8MB)
+  if (file.size <= maxBytes) return file;
+
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file; // fallback
+
+  const ratio = bitmap.width > maxWidth ? maxWidth / bitmap.width : 1;
+  const targetW = Math.round(bitmap.width * ratio);
+  const targetH = Math.round(bitmap.height * ratio);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+
+  let q = qualityStart;
+  let blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
+  if (!blob) return file;
+
+  // Ajusta qualidade pra caber no limite
+  while (blob.size > maxBytes && q > 0.4) {
+    q -= 0.1;
+    // eslint-disable-next-line no-await-in-loop
+    blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
+    if (!blob) break;
+  }
+
+  const out = blob && blob.size < file.size ? blob : file;
+  return new File([out], (file.name || "foto").replace(/\.(heic|heif|png)$/i, ".jpg"), {
+    type: "image/jpeg",
+    lastModified: Date.now(),
+  });
+}
+
 /* ==================== REPORT ==================== */
 function Report() {
   const [step, setStep] = useState(1);
@@ -291,6 +329,8 @@ function Report() {
 
   // anti duplicação
   const [submitting, setSubmitting] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const [uploadCount, setUploadCount] = useState(0);
 
   useEffect(() => {
     if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
@@ -320,7 +360,6 @@ function Report() {
   const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
   const canSubmit = canNext1 && canNext2;
 
-  // idempotency key
   const payloadHash = () => {
     const payload = {
       unidade, categoria, dataUnica, periodicidade, onde,
@@ -353,7 +392,6 @@ function Report() {
       setSubmitting(true);
       sessionStorage.setItem("last_submit_hash", key);
 
-      // autenticação anônima p/ regras do Storage/Firestore
       try {
         await ensureAnonAuth();
       } catch (e) {
@@ -365,26 +403,48 @@ function Report() {
 
       const protocolo = genProtocolo();
 
-      // Upload anexos
+      // === Compactação + Upload anexos ===
       let anexosSubidos = [];
       if (files.length) {
         try {
           const uploaded = [];
+          let finished = 0;
+
           for (const f of files) {
-            const safeName = `${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+            setUploadCount(finished);
+            setUploadPct(0);
+
+            // Comprime se necessário (imagem)
+            // - mantém PDFs como estão
+            const toSend = /\.pdf$/i.test(f.name || "")
+              ? f
+              : await compressImageIfNeeded(f, { maxWidth: 1600, maxBytes: 8 * 1024 * 1024 });
+
+            const safeName = `${Date.now()}-${(f.name || "arquivo")
+              .replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+
             const path = `reports/${protocolo}/${safeName}`;
-            const url = await uploadFile(path, f);
-            uploaded.push({ name: f.name, size: f.size, type: f.type, url, path });
+
+            const res = await uploadFileResumable(
+              path,
+              toSend,
+              (pct) => setUploadPct(pct)
+            );
+
+            uploaded.push({ name: res.name, size: res.size, type: res.type, url: res.url, path: res.path });
+            finished++;
+            setUploadCount(finished);
           }
+
           anexosSubidos = uploaded;
         } catch (err) {
           console.error("Upload error:", err);
-          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
+          alert("Não foi possível enviar os anexos (rede/regras/tamanho). Você pode tentar novamente ou enviar sem anexos.");
           anexosSubidos = [];
         }
       }
 
-      // Salva denúncia no Firestore (idempotente pelo protocolo)
+      // === Salva denúncia ===
       const data = {
         protocolo,
         unidade,
@@ -439,7 +499,11 @@ function Report() {
       <Card className={`space-y-4 ${submitting ? "pointer-events-none opacity-70 relative" : ""}`}>
         {submitting && (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <div className="bg-black/40 rounded-md px-4 py-2 text-white">Enviando…</div>
+            <div className="bg-black/60 rounded-md px-4 py-3 text-white text-sm">
+              {uploadCount < files.length
+                ? `Enviando anexos ${uploadCount}/${files.length} — ${uploadPct}%`
+                : "Salvando denúncia…"}
+            </div>
           </div>
         )}
 
@@ -580,15 +644,17 @@ function Report() {
 
         {step === 4 && (
           <div className="space-y-4">
-            <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
+            <Field label="Anexos (opcional)" hint="Foto do celular/PDF até 8MB. Remova metadados sensíveis antes.">
               <input
                 type="file"
+                accept="image/*,.pdf"
+                capture="environment"
                 multiple
                 onChange={(e) => {
                   const list = Array.from(e.target.files || []);
-                  const ok = list.filter((f) => f.size <= 8 * 1024 * 1024);
+                  const ok = list.filter((f) => f.size <= 20 * 1024 * 1024); // aceita maior aqui porque vamos comprimir imagem
                   const rejeitados = list.length - ok.length;
-                  if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 8MB (${rejeitados}).`);
+                  if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 20MB (${rejeitados}).`);
                   setFiles(ok);
                 }}
               />
@@ -724,57 +790,24 @@ function FAQ() {
   );
 }
 
-/* ==================== ADMIN (com Firestore + filtros + export + dashboard) ==================== */
+/* ==================== ADMIN (com Firestore) ==================== */
 function AdminPanel() {
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState("todos");
   const [lista, setLista] = useState([]);
   const [sel, setSel] = useState(null);
 
-  // seleção (lote)
-  const [selected, setSelected] = useState(new Set());
-  const allSelected = selected.size > 0 && selected.size === lista.length;
-  const anySelected = selected.size > 0;
-
-  // ref para o bloco de detalhes (fica logo abaixo dos filtros)
-  const detailRef = useRef(null);
-
-  // helper: normaliza Timestamp/Date/string -> millis
-  const tsToMs = (ts) => {
-    if (!ts) return 0;
-    try {
-      if (ts?.toDate) ts = ts.toDate();
-      if (typeof ts === "string" || typeof ts === "number") ts = new Date(ts);
-      return ts.getTime?.() || 0;
-    } catch {
-      return 0;
-    }
-  };
-
-  // Assina Firestore (ordem garantida + fallback)
+  // Garante auth (anônima) para ler conforme rules
   useEffect(() => {
-    const unsub = subscribeReports((arr) => {
-      const sorted = [...arr].sort((a, b) => {
-        const aMs = tsToMs(a.createdAt) || tsToMs(a.updatedAt);
-        const bMs = tsToMs(b.createdAt) || tsToMs(b.updatedAt);
-        return bMs - aMs; // desc
-      });
-      setLista(sorted);
-      // limpa seleção de itens removidos
-      setSelected((prev) => new Set([...prev].filter((id) => sorted.find((x) => x.id === id))));
-    });
+    ensureAnonAuth().catch(() => {});
+  }, []);
+
+  // Assina Firestore em ordem por data desc
+  useEffect(() => {
+    const unsub = subscribeReports((arr) => setLista(arr));
     return () => unsub && unsub();
   }, []);
 
-  // ao selecionar um item, rola o bloco de detalhes "pra cima"
-  useEffect(() => {
-    if (sel && detailRef.current) {
-      detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [sel]);
-
-  // busca textual
-  const filtroTexto = (c) => {
+  const filtro = (c) => {
     if (!q.trim()) return true;
     const s = q.toLowerCase();
     return (
@@ -787,14 +820,7 @@ function AdminPanel() {
     );
   };
 
-  // filtro por status
-  const filtroStatus = (c) => {
-    if (statusFilter === "todos") return true;
-    const st = (c.status || "").toLowerCase();
-    return st === statusFilter.toLowerCase();
-  };
-
-  const filtered = lista.filter((c) => filtroTexto(c) && filtroStatus(c));
+  const filtered = lista.filter(filtro);
 
   const [novoStatus, setNovoStatus] = useState("Recebido");
   const [resposta, setResposta] = useState("");
@@ -803,12 +829,17 @@ function AdminPanel() {
     if (sel) {
       setNovoStatus(sel.status || "Recebido");
       setResposta("");
+      // rola a página até o detalhe para usabilidade
+      setTimeout(() => {
+        const el = document.getElementById("admin-detail");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
     }
   }, [sel]);
 
   const salvarStatus = async () => {
     if (!sel) return;
-    await updateReport(sel.id, { status: novoStatus, updatedAt: new Date().toISOString() });
+    await updateReport(sel.id, { status: novoStatus });
     alert("Status atualizado.");
   };
 
@@ -823,370 +854,121 @@ function AdminPanel() {
     alert("Resposta adicionada ao histórico.");
   };
 
-  // abrir anexo (url ou path)
-  async function handleOpenAttachment(f) {
-    try {
-      let url = (f && typeof f.url === "string" ? f.url : "") || "";
-      const isHttp = /^https?:\/\//i.test(url);
-
-      if (!isHttp) {
-        if (f?.path) {
-          const { getDownloadUrlByPath } = await import("./firebase");
-          url = await getDownloadUrlByPath(f.path);
-        } else {
-          alert("Não foi possível localizar o arquivo (sem URL ou path).");
-          return;
-        }
-      }
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch (err) {
-      console.error("Erro ao abrir anexo:", err);
-      alert("Não foi possível abrir o anexo. Verifique as regras do Storage e tente novamente.");
-    }
-  }
-
-  // seleção helpers
-  const toggleOne = (id) => {
-    setSelected((prev) => {
-      const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
-      return s;
-    });
-  };
-  const toggleAll = () => {
-    if (allSelected) setSelected(new Set());
-    else setSelected(new Set(lista.map((x) => x.id)));
-  };
-
-  // deletar
-  const onDeleteSelected = async () => {
-    if (!anySelected) return;
-    if (!confirm(`Tem certeza que deseja excluir ${selected.size} denúncia(s)? Essa ação não pode ser desfeita.`)) return;
-    const ids = [...selected];
-    const { deleteReports } = await import("./firebase");
-    await deleteReports(ids);
-    setSelected(new Set());
-    setSel(null);
-    alert("Denúncia(s) excluída(s).");
-  };
-
-  const onDeleteOne = async (id) => {
-    if (!confirm("Excluir esta denúncia? Essa ação não pode ser desfeita.")) return;
-    const { deleteReport } = await import("./firebase");
-    await deleteReport(id);
-    setSel(null);
-    setSelected((prev) => {
-      const s = new Set(prev);
-      s.delete(id);
-      return s;
-    });
-    alert("Denúncia excluída.");
-  };
-
-  // formatador de datas
-  const fmtDate = (ts) => {
-    if (!ts) return "-";
-    try {
-      if (ts?.toDate) ts = ts.toDate();
-      if (typeof ts === "string") ts = new Date(ts);
-      const d = ts;
-      const pad = (n) => String(n).padStart(2, "0");
-      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    } catch {
-      return "-";
-    }
-  };
-
-  /* ==================== Dashboard (sobre 'filtered') ==================== */
-  const countBy = (arr, keyFn) =>
-    arr.reduce((acc, x) => {
-      const k = keyFn(x) || "-";
-      acc[k] = (acc[k] || 0) + 1;
-      return acc;
-    }, {});
-
-  const total = filtered.length;
-  const porStatus = countBy(filtered, (x) => (x.status || "Sem status"));
-  const porCategoria = countBy(filtered, (x) => x.categoria);
-  const porUnidade = countBy(filtered, (x) => x.unidade);
-
-  const maxVal = Math.max(
-    1,
-    ...Object.values(porStatus),
-    ...Object.values(porCategoria),
-    ...Object.values(porUnidade)
-  );
-
-  const BarList = ({ title, data }) => (
-    <div className="rounded-xl border p-4 bg-white shadow space-y-2">
-      <div className="font-medium">{title}</div>
-      <div className="space-y-2">
-        {Object.entries(data).sort((a,b)=>b[1]-a[1]).map(([k, v]) => (
-          <div key={k}>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-600">{k}</span>
-              <span className="text-slate-500">{v}</span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded">
-              <div
-                className="h-2 bg-emerald-600 rounded"
-                style={{ width: `${(v / maxVal) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-        {Object.keys(data).length === 0 && (
-          <div className="text-xs text-slate-500">Sem dados no filtro atual.</div>
-        )}
-      </div>
-    </div>
-  );
-
-  /* ==================== Exportação ==================== */
-  function toCSV(rows) {
-    const header = [
-      "protocolo",
-      "createdAt",
-      "updatedAt",
-      "unidade",
-      "categoria",
-      "onde",
-      "quando",
-      "periodicidade",
-      "impactoFinanceiro",
-      "reportado",
-      "paraQuem",
-      "anonimo",
-      "contato.nome",
-      "contato.email",
-      "contato.telefone",
-      "contato.prefer",
-      "status",
-      "descricao",
-      "anexos(qtd)"
-    ];
-    const esc = (v) => {
-      if (v === null || v === undefined) return "";
-      const s = String(v).replace(/"/g, '""');
-      return `"${s}"`;
-    };
-    const lines = [header.join(",")];
-
-    rows.forEach((c) => {
-      const line = [
-        c.id || "",
-        fmtDate(c.createdAt),
-        fmtDate(c.updatedAt),
-        c.unidade || "",
-        c.categoria || "",
-        c.perguntas?.onde || "",
-        c.perguntas?.periodo?.data || "",
-        c.perguntas?.periodicidade || "",
-        c.perguntas?.valorFinanceiro || "",
-        c.perguntas?.foiReportado || "",
-        c.perguntas?.paraQuem || "",
-        c.anonimo ? "Sim" : "Não",
-        c.contato?.nome || "",
-        c.contato?.email || "",
-        c.contato?.telefone || "",
-        c.contato?.prefer || "",
-        c.status || "",
-        c.descricao || "",
-        Array.isArray(c.anexos) ? c.anexos.length : 0,
-      ].map(esc);
-      lines.push(line.join(","));
-    });
-    return lines.join("\r\n");
-  }
-
-  function downloadFile(name, mime, content) {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  const exportCSVFiltered = () => {
-    const csv = toCSV(filtered);
-    downloadFile(`denuncias_filtrado_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
-  };
-
-  const exportCSVSelected = () => {
-    if (!anySelected) {
-      alert("Selecione pelo menos uma denúncia para exportar.");
-      return;
-    }
-    const rows = filtered.filter((c) => selected.has(c.id));
-    const csv = toCSV(rows);
-    downloadFile(`denuncias_selecionadas_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
-  };
-
-  // "Exportar PDF" via impressão (abre uma janela com HTML e chama window.print)
-  const exportPDFFiltered = () => {
-    const rows = filtered;
-    const htmlRows = rows
-      .map(
-        (c) => `
-        <tr>
-          <td>${c.id || ""}</td>
-          <td>${fmtDate(c.createdAt)}</td>
-          <td>${c.unidade || ""}</td>
-          <td>${c.categoria || ""}</td>
-          <td>${(c.perguntas?.onde || "").replace(/</g,"&lt;")}</td>
-          <td>${c.status || ""}</td>
-        </tr>`
-      )
-      .join("");
-
-    const win = window.open("", "_blank");
-    win.document.write(`
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Denúncias (filtrado)</title>
-        <style>
-          body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding:16px; }
-          h1 { font-size: 18px; margin: 0 0 12px; }
-          table { width:100%; border-collapse: collapse; font-size:12px; }
-          th, td { border:1px solid #ddd; padding:6px 8px; text-align:left; }
-          th { background:#f5f7fa; }
-        </style>
-      </head>
-      <body>
-        <h1>Denúncias — filtrado (${rows.length})</h1>
-        <table>
-          <thead>
-            <tr>
-              <th>Protocolo</th>
-              <th>Data</th>
-              <th>Unidade</th>
-              <th>Categoria</th>
-              <th>Onde</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>${htmlRows}</tbody>
-        </table>
-        <script>window.print();</script>
-      </body>
-      </html>
-    `);
-    win.document.close();
-  };
-
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h3 className="text-lg font-semibold">Painel (Firestore)</h3>
-          <div className="text-xs text-slate-500">
-            Registros em tempo real • Ordenado por data (recente → antigo)
-          </div>
+          <div className="text-xs text-slate-500">Registros em tempo real • ordenados por data</div>
         </div>
 
-        {/* Filtros / ações */}
-        <div className="grid md:grid-cols-12 gap-2">
-          <div className="md:col-span-5">
-            <input
-              className="w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              placeholder="Buscar por protocolo, unidade, categoria, descrição…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <div className="md:col-span-3">
-            <div className="relative">
-              <select
-                className="w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                title="Filtrar por status"
-              >
-                <option value="todos">Todos os status</option>
-                <option value="Recebido">Recebido</option>
-                <option value="Em análise">Em análise</option>
-                <option value="Em contato">Em contato</option>
-                <option value="Concluído">Concluído</option>
-              </select>
-              <svg aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.17l3.71-2.94a.75.75 0 1 1 .94 1.16l-4.24 3.36a.75.75 0 0 1-.94 0L5.21 8.39a.75.75 0 0 1 .02-1.18z" />
-              </svg>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <input
+            className={inputClass}
+            placeholder="Buscar por protocolo, unidade, categoria, descrição…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <a href="#/" className={btnOutline}>
+            Home
+          </a>
+        </div>
+
+        {/* Lista MOBILE */}
+        <div className="grid md:hidden gap-3">
+          {filtered.length === 0 && (
+            <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
+              Sem registros.
             </div>
-          </div>
-          <div className="md:col-span-4 flex flex-wrap gap-2">
-            <a href="#/" className="px-4 py-3 rounded-lg border hover:bg-slate-50">Home</a>
-            <button
-              className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
-              disabled={!anySelected}
-              onClick={onDeleteSelected}
-              title="Excluir selecionados"
+          )}
+          {filtered.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-lg border p-3 bg-white"
+              onClick={() => setSel(c)}
+              role="button"
             >
-              Excluir selecionados
-            </button>
-            <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={exportCSVFiltered}>
-              Exportar CSV (filtro)
-            </button>
-            <button
-              className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
-              disabled={!anySelected}
-              onClick={exportCSVSelected}
-            >
-              CSV (selecionados)
-            </button>
-            <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={exportPDFFiltered}>
-              PDF (imprimir)
-            </button>
-          </div>
-        </div>
-
-        {/* ======== Dashboard (com base no FILTRO atual) ======== */}
-        <div className="grid md:grid-cols-3 gap-3">
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Total (filtro atual)</div>
-            <div className="text-2xl font-bold">{total}</div>
-          </div>
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Com anexos</div>
-            <div className="text-2xl font-bold">
-              {filtered.filter((x) => (Array.isArray(x.anexos) ? x.anexos.length > 0 : false)).length}
+              <div className="flex justify-between gap-2">
+                <div className="font-mono text-sm">{c.id}</div>
+                <div className="text-xs text-slate-500">{c.status || "-"}</div>
+              </div>
+              <div className="text-sm mt-1">
+                <span className="font-medium">{c.unidade}</span> • {c.categoria}
+              </div>
+              <div className="text-xs text-slate-600 mt-1">
+                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
+              </div>
             </div>
-          </div>
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Identificadas</div>
-            <div className="text-2xl font-bold">
-              {filtered.filter((x) => !x.anonimo).length}
-            </div>
-          </div>
+          ))}
         </div>
 
-        <div className="grid md:grid-cols-3 gap-3">
-          <BarList title="Por status" data={porStatus} />
-          <BarList title="Por categoria" data={porCategoria} />
-          <BarList title="Por unidade" data={porUnidade} />
+        {/* Tabela DESKTOP */}
+        <div className="overflow-auto rounded-lg border hidden md:block">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left">
+              <tr>
+                <th className="p-2 border-b">Protocolo</th>
+                <th className="p-2 border-b">Data/Hora</th>
+                <th className="p-2 border-b">Unidade</th>
+                <th className="p-2 border-b">Categoria</th>
+                <th className="p-2 border-b">Onde</th>
+                <th className="p-2 border-b">Anon.</th>
+                <th className="p-2 border-b">Status</th>
+                <th className="p-2 border-b">Anexos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-3 text-center text-slate-500">
+                    Sem registros.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((c) => (
+                <tr
+                  key={c.id}
+                  className="hover:bg-slate-50 cursor-pointer"
+                  onClick={() => setSel(c)}
+                >
+                  <td className="p-2 border-b font-mono">{c.id}</td>
+                  <td className="p-2 border-b">
+                    {c.createdAt?.toDate
+                      ? c.createdAt.toDate().toLocaleString()
+                      : c.createdAtMs
+                      ? new Date(c.createdAtMs).toLocaleString()
+                      : "-"}
+                  </td>
+                  <td className="p-2 border-b">{c.unidade}</td>
+                  <td className="p-2 border-b">{c.categoria}</td>
+                  <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
+                  <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
+                  <td className="p-2 border-b">{c.status || "-"}</td>
+                  <td className="p-2 border-b">{c.anexos?.length || 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        {/* ======== Detalhe AGORA fica logo abaixo do dashboard ======== */}
+        {/* Detalhes */}
         {sel && (
-          <div ref={detailRef} className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
+          <div id="admin-detail" className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm text-slate-500">Protocolo</div>
                 <div className="font-mono font-semibold">{sel.id}</div>
                 <div className="text-xs text-slate-500 mt-1">
-                  Criado em: {fmtDate(sel.createdAt)} {sel.updatedAt ? `• Atualizado: ${fmtDate(sel.updatedAt)}` : ""}
+                  {sel.createdAt?.toDate
+                    ? sel.createdAt.toDate().toLocaleString()
+                    : sel.createdAtMs
+                    ? new Date(sel.createdAtMs).toLocaleString()
+                    : ""}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(null)}>
-                  fechar
-                </button>
-                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(sel.id)}>
-                  excluir
-                </button>
-              </div>
+              <button className="text-sm underline" onClick={() => setSel(null)}>
+                fechar
+              </button>
             </div>
 
             <div className="grid md:grid-cols-2 gap-3 mt-2">
@@ -1228,15 +1010,24 @@ function AdminPanel() {
               </div>
 
               {!sel.anonimo && sel.contato && (
-                <div className="md:col-span-2">
-                  <div className="text-xs text-slate-500">Contato do denunciante</div>
-                  <div className="text-sm">
-                    {sel.contato.nome ? <div><strong>Nome:</strong> {sel.contato.nome}</div> : null}
-                    {sel.contato.email ? <div><strong>Email:</strong> {sel.contato.email}</div> : null}
-                    {sel.contato.telefone ? <div><strong>Telefone:</strong> {sel.contato.telefone}</div> : null}
-                    {sel.contato.prefer ? <div><strong>Preferência:</strong> {sel.contato.prefer}</div> : null}
+                <>
+                  <div>
+                    <div className="text-xs text-slate-500">Nome</div>
+                    <div>{sel.contato.nome || "-"}</div>
                   </div>
-                </div>
+                  <div>
+                    <div className="text-xs text-slate-500">Email</div>
+                    <div>{sel.contato.email || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500">Telefone</div>
+                    <div>{sel.contato.telefone || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500">Preferência de contato</div>
+                    <div>{sel.contato.prefer || "-"}</div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -1258,19 +1049,23 @@ function AdminPanel() {
                 ) : (
                   <ul className="list-disc pl-5">
                     {sel.anexos.map((f, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAttachment(f)}
-                          className="text-emerald-700 underline hover:no-underline"
-                          title="Abrir anexo"
-                        >
-                          {f.name || "Arquivo"}
-                        </button>
-                        <span className="text-xs text-slate-500">
-                          {typeof f.size === "number" ? `(${Math.round(f.size / 1024)} KB)` : ""}
-                          {f.type ? ` — ${f.type}` : ""}
-                        </span>
+                      <li key={i}>
+                        {f.url ? (
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 underline"
+                          >
+                            {f.name}
+                          </a>
+                        ) : (
+                          f.name
+                        )}
+                        {typeof f.size === "number"
+                          ? ` (${Math.round(f.size / 1024)} KB)`
+                          : ""}
+                        {f.type ? ` — ${f.type}` : ""}
                       </li>
                     ))}
                   </ul>
@@ -1280,24 +1075,18 @@ function AdminPanel() {
 
             {/* Ações admin */}
             <div className="mt-4 grid md:grid-cols-2 gap-3">
-              <div className="rounded-xl border p-5 md:p-6 bg-white shadow space-y-2">
+              <Card className="space-y-2">
                 <div className="font-medium">Alterar status</div>
-                <div className="relative">
-                  <select
-                    className="w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                    value={novoStatus}
-                    onChange={(e) => setNovoStatus(e.target.value)}
-                  >
-                    <option>Recebido</option>
-                    <option>Em análise</option>
-                    <option>Em contato</option>
-                    <option>Concluído</option>
-                  </select>
-                </div>
-                <button onClick={salvarStatus} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">Salvar status</button>
-              </div>
+                <SelectBase value={novoStatus} onChange={(e) => setNovoStatus(e.target.value)}>
+                  <option>Recebido</option>
+                  <option>Em análise</option>
+                  <option>Em contato</option>
+                  <option>Concluído</option>
+                </SelectBase>
+                <button onClick={salvarStatus} className={btnPrimary}>Salvar status</button>
+              </Card>
 
-              <div className="rounded-xl border p-5 md:p-6 bg-white shadow space-y-2">
+              <Card className="space-y-2">
                 <div className="font-medium">Adicionar resposta / comentário</div>
                 <textarea
                   className="w-full rounded-lg border p-3 min-h-[100px]"
@@ -1305,110 +1094,26 @@ function AdminPanel() {
                   onChange={(e) => setResposta(e.target.value)}
                   placeholder="Mensagem para histórico (visível no acompanhamento)"
                 />
-                <button onClick={enviarResposta} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">Salvar resposta</button>
-              </div>
+                <button onClick={enviarResposta} className={btnPrimary}>Salvar resposta</button>
+              </Card>
             </div>
+
+            {/* Histórico de respostas */}
+            {!!(sel.notes?.length) && (
+              <div className="mt-4">
+                <div className="text-xs text-slate-500 mb-1">Histórico</div>
+                <ul className="space-y-2">
+                  {sel.notes.map((n, idx) => (
+                    <li key={idx} className="rounded border p-2 bg-white">
+                      <div className="text-xs text-slate-500">{n.at} — {n.by || "Admin"}</div>
+                      <div className="whitespace-pre-wrap">{n.text}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
-
-        {/* Lista MOBILE */}
-        <div className="grid md:hidden gap-3">
-          {filtered.length === 0 && (
-            <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
-              Sem registros.
-            </div>
-          )}
-          {filtered.map((c) => (
-            <div key={c.id} className="rounded-lg border p-3 bg-white space-y-1">
-              <div className="flex items-start justify-between gap-2">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(c.id)}
-                    onChange={() => toggleOne(c.id)}
-                  />
-                  <span className="font-mono text-sm">{c.id}</span>
-                </label>
-                <div className="text-xs text-slate-500 text-right">
-                  {fmtDate(c.createdAt)}
-                  <div>{c.status || "-"}</div>
-                </div>
-              </div>
-              <div className="text-sm">
-                <span className="font-medium">{c.unidade}</span> • {c.categoria}
-              </div>
-              <div className="text-xs text-slate-600">
-                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
-                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Tabela DESKTOP */}
-        <div className="overflow-auto rounded-lg border hidden md:block">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left">
-              <tr>
-                <th className="p-2 border-b w-10">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    aria-label="Selecionar todos"
-                  />
-                </th>
-                <th className="p-2 border-b">Protocolo</th>
-                <th className="p-2 border-b">Data/Hora</th>
-                <th className="p-2 border-b">Unidade</th>
-                <th className="p-2 border-b">Categoria</th>
-                <th className="p-2 border-b">Onde</th>
-                <th className="p-2 border-b">Anon.</th>
-                <th className="p-2 border-b">Status</th>
-                <th className="p-2 border-b">Anexos</th>
-                <th className="p-2 border-b w-28">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="p-3 text-center text-slate-500">
-                    Sem registros.
-                  </td>
-                </tr>
-              )}
-              {filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50">
-                  <td className="p-2 border-b">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.id)}
-                      onChange={() => toggleOne(c.id)}
-                      aria-label={`Selecionar ${c.id}`}
-                    />
-                  </td>
-                  <td className="p-2 border-b font-mono">{c.id}</td>
-                  <td className="p-2 border-b whitespace-nowrap">{fmtDate(c.createdAt)}</td>
-                  <td className="p-2 border-b">{c.unidade}</td>
-                  <td className="p-2 border-b">{c.categoria}</td>
-                  <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
-                  <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
-                  <td className="p-2 border-b">{c.status || "-"}</td>
-                  <td className="p-2 border-b">{c.anexos?.length || 0}</td>
-                  <td className="p-2 border-b">
-                    <div className="flex gap-2">
-                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
-                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </Card>
       <AvisosSeguranca />
     </section>
@@ -1421,9 +1126,10 @@ function AdminProtected() {
   const [pwd, setPwd] = useState("");
   const [err, setErr] = useState("");
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (pwd === ADMIN_PASS) {
+      await ensureAnonAuth().catch(() => {});
       sessionStorage.setItem("admin_ok", "1");
       setOk(true);
       setErr("");
@@ -1442,7 +1148,7 @@ function AdminProtected() {
           <Field label="Senha" hint="Contato: compliance/ética">
             <input type="password" className={inputClass} value={pwd} onChange={(e)=>setPwd(e.target.value)} />
           </Field>
-          {err && <div className="text-xs text-rose-600">{err}</div>}
+        {err && <div className="text-xs text-rose-600">{err}</div>}
           <div className="flex flex-col sm:flex-row gap-2">
             <button className={btnPrimary}>Entrar</button>
             <a href="#/" className={btnOutline}>Cancelar</a>

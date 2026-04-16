@@ -26,8 +26,8 @@ import {
 } from "./firebase";
 
 /* ==================== Config & Consts ==================== */
-const POLICY_VERSION = "1.0";
-const POLICY_UPDATED = "09/10/2025";
+const POLICY_VERSION = "1.1";
+const POLICY_UPDATED = "16/04/2026";
 const CONSENT_KEY = "consent_ok";
 const ADMIN_PASS = "Venture@4266!";
 

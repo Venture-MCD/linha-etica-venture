@@ -332,7 +332,6 @@ function Termos() {
           <p><strong>Objetivo.</strong> Canal para que colaboradores e terceiros relatem, de boa-fé, suspeitas de irregularidades ou violações.</p>
           <p><strong>Anonimato.</strong> Você pode denunciar de forma anônima ou identificada.</p>
           <p><strong>LGPD.</strong> Tratamento apenas do necessário, com base legal adequada e acesso restrito aos autorizados.</p>
-          <p><strong>Escopo do protótipo.</strong> Denúncias salvas no Firestore; anexos no Storage.</p>
           <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política.</p>
         </div>
 

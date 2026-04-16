@@ -1,35 +1,30 @@
-// src/firebase.js
-// Firebase v11 (modular) — compatível com Vite e variáveis VITE_*
-
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import {
   getAuth,
   signInAnonymously,
-  setPersistence,
-  browserLocalPersistence,
+  onAuthStateChanged,
 } from "firebase/auth";
 import {
   getFirestore,
   doc,
   setDoc,
   getDoc,
-  onSnapshot,
   updateDoc,
-  deleteDoc,
-  serverTimestamp,
   collection,
+  onSnapshot,
   query,
   orderBy,
-  arrayUnion,
+  deleteDoc,
+  writeBatch,
 } from "firebase/firestore";
 import {
   getStorage,
-  ref as sref,
-  uploadBytesResumable,
+  ref,
+  uploadBytes,
   getDownloadURL,
 } from "firebase/storage";
 
-/* ==================== Config ==================== */
+/* ==================== Firebase Config ==================== */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FB_API_KEY,
   authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
@@ -38,109 +33,96 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FB_APP_ID,
 };
 
-export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-/* ==================== Auth (anônimo) ==================== */
+/* ==================== Auth ==================== */
 export async function ensureAnonAuth() {
-  const auth = getAuth(app);
-  await setPersistence(auth, browserLocalPersistence);
-
-  // Se já logado (anônimo ou não), reaproveita
   if (auth.currentUser) return auth.currentUser;
 
-  // Anônimo
-  const cred = await signInAnonymously(auth);
-  return cred.user;
+  return new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        unsub();
+        resolve(user);
+      } else {
+        try {
+          const cred = await signInAnonymously(auth);
+          unsub();
+          resolve(cred.user);
+        } catch (err) {
+          unsub();
+          reject(err);
+        }
+      }
+    });
+  });
 }
 
 /* ==================== Storage ==================== */
-// Upload arquivo para um path no Storage e retorna a URL pública
 export async function uploadFile(path, file) {
-  const storage = getStorage(app);
-  const r = sref(storage, path);
-  const task = uploadBytesResumable(r, file);
-
-  // aguarda finalizar
-  await new Promise((resolve, reject) => {
-    task.on(
-      "state_changed",
-      () => {},
-      (err) => reject(err),
-      () => resolve()
-    );
-  });
-
-  const url = await getDownloadURL(task.snapshot.ref);
-  return url;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  return await getDownloadURL(storageRef);
 }
 
-// Pegar URL de download a partir do caminho no Storage
-export async function getDownloadUrlByPath(storagePath) {
-  const storage = getStorage(app);
-  const r = sref(storage, storagePath);
-  return await getDownloadURL(r);
+export async function getDownloadUrlByPath(path) {
+  const storageRef = ref(storage, path);
+  return await getDownloadURL(storageRef);
 }
 
-/* ==================== Firestore: Reports ==================== */
-// Cria ou substitui denúncia com timestamps consistentes
+/* ==================== Reports ==================== */
 export async function createOrReplaceReport(id, data) {
-  const db = getFirestore(app);
-  const ref = doc(db, "reports", id);
-  const snap = await getDoc(ref);
-
-  const base = snap.exists()
-    ? { updatedAt: serverTimestamp() }
-    : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-
-  await setDoc(ref, { ...data, ...base }, { merge: true });
-  return id;
+  await setDoc(doc(db, "reports", id), data, { merge: true });
 }
 
-// Buscar denúncia pelo protocolo (id do doc = protocolo)
 export async function getReportByProtocol(id) {
-  const db = getFirestore(app);
-  const ref = doc(db, "reports", id);
-  const snap = await getDoc(ref);
+  const snap = await getDoc(doc(db, "reports", id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() };
 }
 
-// Assinar lista de denúncias ordenadas por criação (mais recente → antigo)
 export function subscribeReports(callback) {
-  const db = getFirestore(app);
   const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return onSnapshot(q, (snapshot) => {
+    const arr = snapshot.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    }));
     callback(arr);
   });
 }
 
-// Atualizar campos da denúncia (salva updatedAt)
 export async function updateReport(id, patch) {
-  const db = getFirestore(app);
-  await updateDoc(doc(db, "reports", id), {
-    ...patch,
-    updatedAt: serverTimestamp(),
-  });
+  await updateDoc(doc(db, "reports", id), patch);
 }
 
-// Adicionar nota/comentário do admin ao histórico (arrayUnion)
 export async function addAdminNote(id, note) {
-  const db = getFirestore(app);
-  await updateDoc(doc(db, "reports", id), {
-    notes: arrayUnion(note),
-    updatedAt: serverTimestamp(),
+  const refDoc = doc(db, "reports", id);
+  const current = await getDoc(refDoc);
+  const data = current.exists() ? current.data() : {};
+  const notes = Array.isArray(data.notes) ? data.notes : [];
+
+  await updateDoc(refDoc, {
+    notes: [...notes, note],
+    updatedAt: new Date().toISOString(),
   });
 }
 
-// Excluir uma denúncia
+/* ==================== Delete ==================== */
 export async function deleteReport(id) {
-  const db = getFirestore(app);
   await deleteDoc(doc(db, "reports", id));
 }
 
-// Excluir várias denúncias
-export async function deleteReports(ids = []) {
-  const db = getFirestore(app);
-  await Promise.all(ids.map((id) => deleteDoc(doc(db, "reports", id))));
+export async function deleteReports(ids) {
+  const batch = writeBatch(db);
+  ids.forEach((id) => {
+    batch.delete(doc(db, "reports", id));
+  });
+  await batch.commit();
 }
+
+/* ==================== Exports (optional helpers) ==================== */
+export { auth, db, storage };

@@ -380,12 +380,14 @@ function Report() {
   const [dataUnica, setDataUnica] = useState("");
   const [periodicidade, setPeriodicidade] = useState("único");
   const [plantao, setPlantao] = useState("");
+  const [riscoImediato, setRiscoImediato] = useState("");
+  const [descricaoRisco, setDescricaoRisco] = useState("");
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
   const [valorFinanceiro, setValorFinanceiro] = useState("");
   const [foiReportado, setFoiReportado] = useState("nao");
   const [paraQuem, setParaQuem] = useState("");
-  const [files, setFiles] = useState([]); // File[]
+  const [files, setFiles] = useState([]);
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
@@ -393,7 +395,6 @@ function Report() {
   const [emailAcompanhamento, setEmailAcompanhamento] = useState("");
   const [successData, setSuccessData] = useState(null);
 
-  // anti duplicação
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -404,6 +405,7 @@ function Report() {
 
   const isValidISODate = (s) =>
     /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+
   const isFuture = (s) => {
     if (!isValidISODate(s)) return false;
     const d = new Date(s);
@@ -412,6 +414,7 @@ function Report() {
     today.setHours(0, 0, 0, 0);
     return d > today;
   };
+
   const dateError = !dataUnica
     ? "Informe a data do ocorrido."
     : !isValidISODate(dataUnica)
@@ -421,10 +424,17 @@ function Report() {
     : "";
 
   const canNext1 = !!unidade && !!categoria && !!subcategoria;
-  const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError && !!plantao;
+
+  const canNext2 =
+    descricao.trim().length >= 100 &&
+    !!onde &&
+    !dateError &&
+    !!plantao &&
+    !!riscoImediato &&
+    (riscoImediato === "Sim, risco imediato" ? descricaoRisco.trim().length >= 10 : true);
+
   const canSubmit = canNext1 && canNext2;
 
-  // idempotency key
   const payloadHash = () => {
     const payload = {
       unidade,
@@ -434,6 +444,8 @@ function Report() {
       dataUnica,
       periodicidade,
       plantao,
+      riscoImediato,
+      descricaoRisco,
       onde,
       descricao: descricao.trim(),
       valorFinanceiro,
@@ -443,7 +455,7 @@ function Report() {
       contato,
       prefer,
       emailAcompanhamento,
-      files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
+      files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
     };
     const s = JSON.stringify(payload);
     let h = 5381;
@@ -483,6 +495,8 @@ function Report() {
     setDataUnica("");
     setPeriodicidade("único");
     setPlantao("");
+    setRiscoImediato("");
+    setDescricaoRisco("");
     setOnde("");
     setDescricao("");
     setValorFinanceiro("");
@@ -515,7 +529,6 @@ function Report() {
 
       sessionStorage.setItem("last_submit_hash", key);
 
-      // autenticação anônima p/ regras do Storage/Firestore
       try {
         await withTimeout(ensureAnonAuth(), 8000, "iniciar sessão anônima");
       } catch (e) {
@@ -527,7 +540,6 @@ function Report() {
 
       const protocolo = genProtocolo();
 
-      // Upload anexos
       let anexosSubidos = [];
       if (files.length) {
         try {
@@ -543,7 +555,6 @@ function Report() {
         }
       }
 
-      // Salva denúncia no Firestore
       const data = {
         protocolo,
         unidade,
@@ -554,6 +565,8 @@ function Report() {
           periodo: { tipo: "unico", data: dataUnica },
           periodicidade,
           plantao,
+          riscoImediato,
+          descricaoRisco: descricaoRisco.trim() || null,
           onde,
           valorFinanceiro,
           foiReportado,
@@ -802,6 +815,43 @@ function Report() {
                     </SelectBase>
                   </Field>
                 </div>
+
+                <div className="md:col-span-12">
+                  <Field label="Existe risco imediato relacionado a esta denúncia? *" hint="Avalie se há ameaça atual à integridade física, segurança ou operação">
+                    <SelectBase value={riscoImediato} onChange={(e) => setRiscoImediato(e.target.value)}>
+                      <option value="">Selecione</option>
+                      <option value="Não há risco imediato">Não há risco imediato</option>
+                      <option value="Pode haver risco">Pode haver risco</option>
+                      <option value="Sim, risco imediato">Sim, risco imediato</option>
+                    </SelectBase>
+                  </Field>
+                </div>
+
+                {riscoImediato === "Sim, risco imediato" && (
+                  <div className="md:col-span-12">
+                    <Field
+                      label="Descreva o risco imediato *"
+                      hint="Explique por que a situação exige atenção urgente"
+                    >
+                      <textarea
+                        className="w-full rounded-lg border p-3 min-h-[100px]"
+                        value={descricaoRisco}
+                        onChange={(e) => setDescricaoRisco(e.target.value)}
+                        placeholder="Ex.: ameaça direta, risco de agressão, risco à integridade de colaboradores, clientes ou operação"
+                      />
+                      <div className="text-xs mt-1 text-slate-500">
+                        {descricaoRisco.trim().length} / 10
+                      </div>
+                    </Field>
+                  </div>
+                )}
+
+                <div className="md:col-span-12">
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    ⚠️ Em caso de risco imediato à integridade física ou segurança, procure imediatamente um responsável local ou serviço de emergência. Este canal não substitui atendimento emergencial.
+                  </div>
+                </div>
+
                 <div className="md:col-span-12">
                   <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
                     <input
@@ -1230,7 +1280,6 @@ function AdminPanel() {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
-
       const ctx = new AudioCtx();
       const oscillator = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -1372,7 +1421,7 @@ function AdminPanel() {
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Erro ao abrir anexo:", err);
-      alert("Não foi possível abrir o anexo. Verifique as regras do Storage e tente novamente.");
+      alert("Não foi possível abrir o anexo.");
     }
   }
 
@@ -1426,197 +1475,6 @@ function AdminPanel() {
     }
   };
 
-  const countBy = (arr, keyFn) =>
-    arr.reduce((acc, x) => {
-      const k = keyFn(x) || "-";
-      acc[k] = (acc[k] || 0) + 1;
-      return acc;
-    }, {});
-
-  const total = filtered.length;
-  const porStatus = countBy(filtered, (x) => (x.status || "Sem status"));
-  const porCategoria = countBy(filtered, (x) => x.categoria);
-  const porUnidade = countBy(filtered, (x) => x.unidade);
-  const porPlantao = countBy(filtered, (x) => x.perguntas?.plantao);
-
-  const maxVal = Math.max(
-    1,
-    ...Object.values(porStatus),
-    ...Object.values(porCategoria),
-    ...Object.values(porUnidade),
-    ...Object.values(porPlantao)
-  );
-
-  const BarList = ({ title, data }) => (
-    <div className="rounded-xl border p-4 bg-white shadow space-y-2">
-      <div className="font-medium">{title}</div>
-      <div className="space-y-2">
-        {Object.entries(data).sort((a,b)=>b[1]-a[1]).map(([k, v]) => (
-          <div key={k}>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-600">{k}</span>
-              <span className="text-slate-500">{v}</span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded">
-              <div
-                className="h-2 bg-emerald-600 rounded"
-                style={{ width: `${(v / maxVal) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-        {Object.keys(data).length === 0 && (
-          <div className="text-xs text-slate-500">Sem dados no filtro atual.</div>
-        )}
-      </div>
-    </div>
-  );
-
-  function toCSV(rows) {
-    const header = [
-      "protocolo",
-      "createdAt",
-      "updatedAt",
-      "unidade",
-      "categoria",
-      "subcategoria",
-      "denunciado.nome",
-      "denunciado.cargo",
-      "denunciado.sexo",
-      "onde",
-      "quando",
-      "plantao",
-      "periodicidade",
-      "impactoFinanceiro",
-      "reportado",
-      "paraQuem",
-      "anonimo",
-      "contato.nome",
-      "contato.email",
-      "contato.telefone",
-      "contato.prefer",
-      "status",
-      "descricao",
-      "anexos(qtd)"
-    ];
-    const esc = (v) => {
-      if (v === null || v === undefined) return "";
-      const s = String(v).replace(/"/g, '""');
-      return `"${s}"`;
-    };
-    const lines = [header.join(",")];
-
-    rows.forEach((c) => {
-      const line = [
-        c.id || "",
-        fmtDate(c.createdAt),
-        fmtDate(c.updatedAt),
-        c.unidade || "",
-        c.categoria || "",
-        c.subcategoria || "",
-        c.denunciado?.nome || "",
-        c.denunciado?.cargo || "",
-        c.denunciado?.sexo || "",
-        c.perguntas?.onde || "",
-        c.perguntas?.periodo?.data || "",
-        c.perguntas?.plantao || "",
-        c.perguntas?.periodicidade || "",
-        c.perguntas?.valorFinanceiro || "",
-        c.perguntas?.foiReportado || "",
-        c.perguntas?.paraQuem || "",
-        c.anonimo ? "Sim" : "Não",
-        c.contato?.nome || "",
-        c.contato?.email || "",
-        c.contato?.telefone || "",
-        c.contato?.prefer || "",
-        c.status || "",
-        c.descricao || "",
-        Array.isArray(c.anexos) ? c.anexos.length : 0,
-      ].map(esc);
-      lines.push(line.join(","));
-    });
-    return lines.join("\r\n");
-  }
-
-  function downloadFile(name, mime, content) {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  const exportCSVFiltered = () => {
-    const csv = toCSV(filtered);
-    downloadFile(`denuncias_filtrado_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
-  };
-
-  const exportCSVSelected = () => {
-    if (!anySelected) {
-      alert("Selecione pelo menos uma denúncia para exportar.");
-      return;
-    }
-    const rows = filtered.filter((c) => selected.has(c.id));
-    const csv = toCSV(rows);
-    downloadFile(`denuncias_selecionadas_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
-  };
-
-  const exportPDFFiltered = () => {
-    const rows = filtered;
-    const htmlRows = rows
-      .map(
-        (c) => `
-        <tr>
-          <td>${c.id || ""}</td>
-          <td>${fmtDate(c.createdAt)}</td>
-          <td>${c.unidade || ""}</td>
-          <td>${c.categoria || ""}</td>
-          <td>${c.subcategoria || ""}</td>
-          <td>${(c.perguntas?.onde || "").replace(/</g,"&lt;")}</td>
-          <td>${c.status || ""}</td>
-        </tr>`
-      )
-      .join("");
-
-    const win = window.open("", "_blank");
-    win.document.write(`
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Denúncias (filtrado)</title>
-        <style>
-          body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding:16px; }
-          h1 { font-size: 18px; margin: 0 0 12px; }
-          table { width:100%; border-collapse: collapse; font-size:12px; }
-          th, td { border:1px solid #ddd; padding:6px 8px; text-align:left; }
-          th { background:#f5f7fa; }
-        </style>
-      </head>
-      <body>
-        <h1>Denúncias — filtrado (${rows.length})</h1>
-        <table>
-          <thead>
-            <tr>
-              <th>Protocolo</th>
-              <th>Data</th>
-              <th>Unidade</th>
-              <th>Categoria</th>
-              <th>Detalhamento</th>
-              <th>Onde</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>${htmlRows}</tbody>
-        </table>
-        <script>window.print();</script>
-      </body>
-      </html>
-    `);
-    win.document.close();
-  };
-
   return (
     <section className="space-y-4 md:space-y-6">
       <Card className="space-y-3">
@@ -1657,7 +1515,6 @@ function AdminPanel() {
                 className="w-full h-12 rounded-lg border pl-3 pr-10 py-0 text-[15px] leading-[48px] appearance-none align-middle focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                title="Filtrar por status"
               >
                 <option value="todos">Todos os status</option>
                 <option value="Recebido">Recebido</option>
@@ -1665,9 +1522,6 @@ function AdminPanel() {
                 <option value="Em contato">Em contato</option>
                 <option value="Concluído">Concluído</option>
               </select>
-              <svg aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.17l3.71-2.94a.75.75 0 1 1 .94 1.16l-4.24 3.36a.75.75 0 0 1-.94 0L5.21 8.39a.75.75 0 0 1 .02-1.18z" />
-              </svg>
             </div>
           </div>
           <div className="md:col-span-4 flex flex-wrap gap-2">
@@ -1676,50 +1530,10 @@ function AdminPanel() {
               className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
               disabled={!anySelected}
               onClick={onDeleteSelected}
-              title="Excluir selecionados"
             >
               Excluir selecionados
             </button>
-            <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={exportCSVFiltered}>
-              Exportar CSV (filtro)
-            </button>
-            <button
-              className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
-              disabled={!anySelected}
-              onClick={exportCSVSelected}
-            >
-              CSV (selecionados)
-            </button>
-            <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={exportPDFFiltered}>
-              PDF (imprimir)
-            </button>
           </div>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-3">
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Total (filtro atual)</div>
-            <div className="text-2xl font-bold">{total}</div>
-          </div>
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Com anexos</div>
-            <div className="text-2xl font-bold">
-              {filtered.filter((x) => (Array.isArray(x.anexos) ? x.anexos.length > 0 : false)).length}
-            </div>
-          </div>
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Identificadas</div>
-            <div className="text-2xl font-bold">
-              {filtered.filter((x) => !x.anonimo).length}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-4 gap-3">
-          <BarList title="Por status" data={porStatus} />
-          <BarList title="Por categoria" data={porCategoria} />
-          <BarList title="Por unidade" data={porUnidade} />
-          <BarList title="Por plantão" data={porPlantao} />
         </div>
 
         {sel && (
@@ -1741,6 +1555,12 @@ function AdminPanel() {
                 </button>
               </div>
             </div>
+
+            {sel.perguntas?.riscoImediato === "Sim, risco imediato" && (
+              <div className="inline-flex mt-3 px-3 py-1 rounded-full bg-red-100 text-red-700 text-sm font-medium">
+                Risco imediato
+              </div>
+            )}
 
             <div className="grid md:grid-cols-2 gap-3 mt-2">
               <div>
@@ -1768,25 +1588,20 @@ function AdminPanel() {
                 <div>{sel.perguntas?.plantao || "-"}</div>
               </div>
               <div>
+                <div className="text-xs text-slate-500">Risco imediato</div>
+                <div>{sel.perguntas?.riscoImediato || "-"}</div>
+              </div>
+              <div>
                 <div className="text-xs text-slate-500">Recorrência</div>
                 <div>{sel.perguntas?.periodicidade || "-"}</div>
               </div>
-              <div>
-                <div className="text-xs text-slate-500">Impacto financeiro</div>
-                <div>{sel.perguntas?.valorFinanceiro || "-"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Reportado internamente</div>
-                <div>
-                  {sel.perguntas?.foiReportado === "sim"
-                    ? `Sim (${sel.perguntas?.paraQuem || "—"})`
-                    : "Não"}
+
+              {sel.perguntas?.descricaoRisco && (
+                <div className="md:col-span-2">
+                  <div className="text-xs text-slate-500">Descrição do risco imediato</div>
+                  <div className="whitespace-pre-wrap">{sel.perguntas.descricaoRisco}</div>
                 </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Anonimato</div>
-                <div>{sel.anonimo ? "Sim" : "Não"}</div>
-              </div>
+              )}
 
               {(sel.denunciado?.nome || sel.denunciado?.cargo || sel.denunciado?.sexo) && (
                 <div className="md:col-span-2">
@@ -1799,27 +1614,17 @@ function AdminPanel() {
                 </div>
               )}
 
-              {!sel.anonimo && sel.contato && (
+              {sel.emailAcompanhamento && (
                 <div className="md:col-span-2">
-                  <div className="text-xs text-slate-500">Contato do denunciante</div>
-                  <div className="text-sm">
-                    {sel.contato.nome ? <div><strong>Nome:</strong> {sel.contato.nome}</div> : null}
-                    {sel.contato.email ? <div><strong>Email:</strong> {sel.contato.email}</div> : null}
-                    {sel.contato.telefone ? <div><strong>Telefone:</strong> {sel.contato.telefone}</div> : null}
-                    {sel.contato.prefer ? <div><strong>Preferência:</strong> {sel.contato.prefer}</div> : null}
-                  </div>
+                  <div className="text-xs text-slate-500">E-mail para acompanhamento</div>
+                  <div>{sel.emailAcompanhamento}</div>
                 </div>
               )}
             </div>
 
             <div className="mt-3">
               <div className="text-xs text-slate-500">Descrição</div>
-              <div
-                className="whitespace-pre-wrap max-w-full"
-                style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
-              >
-                {sel.descricao}
-              </div>
+              <div className="whitespace-pre-wrap">{sel.descricao}</div>
             </div>
 
             {Array.isArray(sel.anexos) && (
@@ -1835,7 +1640,6 @@ function AdminPanel() {
                           type="button"
                           onClick={() => handleOpenAttachment(f)}
                           className="text-emerald-700 underline hover:no-underline"
-                          title="Abrir anexo"
                         >
                           {f.name || "Arquivo"}
                         </button>
@@ -1865,7 +1669,9 @@ function AdminPanel() {
                     <option>Concluído</option>
                   </select>
                 </div>
-                <button onClick={salvarStatus} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">Salvar status</button>
+                <button onClick={salvarStatus} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">
+                  Salvar status
+                </button>
               </div>
 
               <div className="rounded-xl border p-5 md:p-6 bg-white shadow space-y-2">
@@ -1874,64 +1680,15 @@ function AdminPanel() {
                   className="w-full rounded-lg border p-3 min-h-[100px]"
                   value={resposta}
                   onChange={(e) => setResposta(e.target.value)}
-                  placeholder="Mensagem para histórico (visível no acompanhamento)"
+                  placeholder="Mensagem para histórico"
                 />
-                <button onClick={enviarResposta} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">Salvar resposta</button>
+                <button onClick={enviarResposta} className="w-full md:w-auto px-4 py-3 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700">
+                  Salvar resposta
+                </button>
               </div>
             </div>
           </div>
         )}
-
-        <div className="grid md:hidden gap-3">
-          {filtered.length === 0 && (
-            <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
-              Sem registros.
-            </div>
-          )}
-          {filtered.map((c) => (
-            <div
-              key={c.id}
-              className={`rounded-lg border p-3 bg-white space-y-1 ${newIds.has(c.id) ? "bg-emerald-50" : ""}`}
-            >
-              <div className={`flex items-start justify-between gap-2 ${newIds.has(c.id) ? "rounded-lg p-2 bg-emerald-50" : ""}`}>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(c.id)}
-                    onChange={() => toggleOne(c.id)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm">{c.id}</span>
-                    {newIds.has(c.id) && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white">
-                        Nova
-                      </span>
-                    )}
-                  </div>
-                </label>
-                <div className="text-xs text-slate-500 text-right">
-                  {fmtDate(c.createdAt)}
-                  <div>{c.status || "-"}</div>
-                </div>
-              </div>
-              <div className="text-sm">
-                <span className="font-medium">{c.unidade}</span> • {c.categoria}
-              </div>
-              <div className="text-xs text-slate-600">
-                {c.subcategoria || "-"} • {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0}
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button
-                  className="px-4 py-3 rounded-lg border hover:bg-slate-50"
-                  onClick={() => openDetail(c)}
-                >
-                  Detalhes
-                </button>
-                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
-              </div>
-            </div>
-          ))}
-        </div>
 
         <div className="overflow-auto rounded-lg border hidden md:block">
           <table className="min-w-full text-sm">
@@ -1942,7 +1699,6 @@ function AdminPanel() {
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleAll}
-                    aria-label="Selecionar todos"
                   />
                 </th>
                 <th className="p-2 border-b">Protocolo</th>
@@ -1951,16 +1707,15 @@ function AdminPanel() {
                 <th className="p-2 border-b">Categoria</th>
                 <th className="p-2 border-b">Detalhamento</th>
                 <th className="p-2 border-b">Onde</th>
-                <th className="p-2 border-b">Anon.</th>
+                <th className="p-2 border-b">Risco</th>
                 <th className="p-2 border-b">Status</th>
-                <th className="p-2 border-b">Anexos</th>
-                <th className="p-2 border-b w-28">Ações</th>
+                <th className="p-2 border-b">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="p-3 text-center text-slate-500">
+                  <td colSpan={10} className="p-3 text-center text-slate-500">
                     Sem registros.
                   </td>
                 </tr>
@@ -1975,14 +1730,13 @@ function AdminPanel() {
                       type="checkbox"
                       checked={selected.has(c.id)}
                       onChange={() => toggleOne(c.id)}
-                      aria-label={`Selecionar ${c.id}`}
                     />
                   </td>
                   <td className="p-2 border-b font-mono">
                     <div className="flex items-center gap-2">
                       <span>{c.id}</span>
                       {newIds.has(c.id) && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-sans">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white">
                           Nova
                         </span>
                       )}
@@ -1993,18 +1747,16 @@ function AdminPanel() {
                   <td className="p-2 border-b">{c.categoria}</td>
                   <td className="p-2 border-b">{c.subcategoria || "-"}</td>
                   <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
-                  <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
+                  <td className="p-2 border-b">{c.perguntas?.riscoImediato || "-"}</td>
                   <td className="p-2 border-b">{c.status || "-"}</td>
-                  <td className="p-2 border-b">{c.anexos?.length || 0}</td>
                   <td className="p-2 border-b">
                     <div className="flex gap-2">
-                      <button
-                        className="px-4 py-3 rounded-lg border hover:bg-slate-50"
-                        onClick={() => openDetail(c)}
-                      >
+                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => openDetail(c)}>
                         Detalhes
                       </button>
-                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
+                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>
+                        Excluir
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2017,7 +1769,6 @@ function AdminPanel() {
     </section>
   );
 }
-
 /* ==================== ADMIN protegido ==================== */
 function AdminProtected() {
   const [ok, setOk] = useState(sessionStorage.getItem("admin_ok") === "1");

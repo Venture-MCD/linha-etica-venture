@@ -1255,12 +1255,12 @@ function AdminPanel() {
   const [sel, setSel] = useState(null);
 
   const [selected, setSelected] = useState(new Set());
-  const allSelected = selected.size > 0 && selected.size === filtered.length;
-  const anySelected = selected.size > 0;
-
   const [newCount, setNewCount] = useState(0);
   const [newIds, setNewIds] = useState(new Set());
   const [initialLoaded, setInitialLoaded] = useState(false);
+
+  const [novoStatus, setNovoStatus] = useState("Recebido");
+  const [resposta, setResposta] = useState("");
 
   const detailRef = useRef(null);
 
@@ -1353,6 +1353,13 @@ function AdminPanel() {
     }
   }, [sel]);
 
+  useEffect(() => {
+    if (sel) {
+      setNovoStatus(sel.status || "Recebido");
+      setResposta("");
+    }
+  }, [sel]);
+
   const clearNewAlerts = () => {
     setNewCount(0);
     setNewIds(new Set());
@@ -1376,6 +1383,8 @@ function AdminPanel() {
       c.unidade?.toLowerCase?.().includes(s) ||
       c.categoria?.toLowerCase?.().includes(s) ||
       c.subcategoria?.toLowerCase?.().includes(s) ||
+      c.denunciado?.nome?.toLowerCase?.().includes(s) ||
+      c.denunciado?.cargo?.toLowerCase?.().includes(s) ||
       c.perguntas?.onde?.toLowerCase?.().includes(s) ||
       c.descricao?.toLowerCase?.().includes(s)
     );
@@ -1389,15 +1398,8 @@ function AdminPanel() {
 
   const filtered = lista.filter((c) => filtroTexto(c) && filtroStatus(c));
 
-  const [novoStatus, setNovoStatus] = useState("Recebido");
-  const [resposta, setResposta] = useState("");
-
-  useEffect(() => {
-    if (sel) {
-      setNovoStatus(sel.status || "Recebido");
-      setResposta("");
-    }
-  }, [sel]);
+  const allSelected = selected.size > 0 && selected.size === filtered.length;
+  const anySelected = selected.size > 0;
 
   const salvarStatus = async () => {
     if (!sel) return;
@@ -1495,19 +1497,89 @@ function AdminPanel() {
     return score;
   };
 
+  const faixaRisco = (score) => {
+    if (score >= 12) return { label: "Alto", bg: "bg-red-100", text: "text-red-700", border: "border-red-200" };
+    if (score >= 6) return { label: "Médio", bg: "bg-yellow-100", text: "text-yellow-700", border: "border-yellow-200" };
+    return { label: "Baixo", bg: "bg-emerald-100", text: "text-emerald-700", border: "border-emerald-200" };
+  };
+
   const total = filtered.length;
+  const anonimas = filtered.filter((x) => x.anonimo).length;
+  const riscoImediatoQtd = filtered.filter((x) => x.perguntas?.riscoImediato === "Sim, risco imediato").length;
+  const comAnexo = filtered.filter((x) => Array.isArray(x.anexos) && x.anexos.length > 0).length;
+
   const porStatus = countBy(filtered, (x) => x.status || "Sem status");
   const porCategoria = countBy(filtered, (x) => x.categoria);
   const porUnidade = countBy(filtered, (x) => x.unidade);
   const porPlantao = countBy(filtered, (x) => x.perguntas?.plantao);
 
+  const scoreTotalGeral = filtered.reduce((sum, c) => sum + calcularScoreRisco(c), 0);
+  const scoreMedioGeral = total > 0 ? (scoreTotalGeral / total) : 0;
+
   const riscoPorUnidade = {};
+  const statsPorUnidade = {};
+
   filtered.forEach((c) => {
     const unidade = c.unidade || "N/A";
     const score = calcularScoreRisco(c);
+
     if (!riscoPorUnidade[unidade]) riscoPorUnidade[unidade] = 0;
     riscoPorUnidade[unidade] += score;
+
+    if (!statsPorUnidade[unidade]) {
+      statsPorUnidade[unidade] = {
+        denuncias: 0,
+        scoreTotal: 0,
+        riscoImediato: 0,
+      };
+    }
+
+    statsPorUnidade[unidade].denuncias += 1;
+    statsPorUnidade[unidade].scoreTotal += score;
+    if (c.perguntas?.riscoImediato === "Sim, risco imediato") {
+      statsPorUnidade[unidade].riscoImediato += 1;
+    }
   });
+
+  const resumoUnidades = Object.entries(statsPorUnidade)
+    .map(([unidade, v]) => {
+      const scoreMedio = v.denuncias > 0 ? v.scoreTotal / v.denuncias : 0;
+      return {
+        unidade,
+        denuncias: v.denuncias,
+        scoreTotal: v.scoreTotal,
+        scoreMedio,
+        riscoImediato: v.riscoImediato,
+        faixa: faixaRisco(scoreMedio),
+      };
+    })
+    .sort((a, b) => b.scoreTotal - a.scoreTotal);
+
+  const denunciadosMap = {};
+  filtered.forEach((c) => {
+    const nome = c.denunciado?.nome?.trim();
+    if (!nome) return;
+
+    const chave = `${nome}|||${c.unidade || "N/A"}`;
+    if (!denunciadosMap[chave]) {
+      denunciadosMap[chave] = {
+        nome,
+        unidade: c.unidade || "N/A",
+        cargo: c.denunciado?.cargo || "",
+        qtd: 0,
+        scoreTotal: 0,
+      };
+    }
+    denunciadosMap[chave].qtd += 1;
+    denunciadosMap[chave].scoreTotal += calcularScoreRisco(c);
+  });
+
+  const maioresDenunciados = Object.values(denunciadosMap)
+    .sort((a, b) => {
+      if (b.qtd !== a.qtd) return b.qtd - a.qtd;
+      return b.scoreTotal - a.scoreTotal;
+    })
+    .slice(0, 10);
 
   const maxVal = Math.max(
     1,
@@ -1553,18 +1625,21 @@ function AdminPanel() {
     URL.revokeObjectURL(url);
   }
 
-  const exportExcelExecutivo = () => {
+  const exportBaseDetalhada = () => {
     const header = [
       "Protocolo",
       "Data",
       "Unidade",
       "Categoria",
       "Subcategoria",
+      "Denunciado",
+      "Cargo do denunciado",
       "Plantão",
       "Risco Imediato",
       "Descrição do Risco",
       "Status",
       "Score de Risco",
+      "Anonima",
       "Descrição"
     ];
 
@@ -1574,11 +1649,14 @@ function AdminPanel() {
       c.unidade || "",
       c.categoria || "",
       c.subcategoria || "",
+      c.denunciado?.nome || "",
+      c.denunciado?.cargo || "",
       c.perguntas?.plantao || "",
       c.perguntas?.riscoImediato || "",
       c.perguntas?.descricaoRisco || "",
       c.status || "",
       calcularScoreRisco(c),
+      c.anonimo ? "Sim" : "Não",
       (c.descricao || "").replace(/\n/g, " ")
     ]);
 
@@ -1586,11 +1664,35 @@ function AdminPanel() {
       .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
       .join("\n");
 
-    downloadFile(
-      `dashboard_executivo_${Date.now()}.csv`,
-      "text/csv;charset=utf-8;",
-      csv
-    );
+    downloadFile(`base_denuncias_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
+  };
+
+  const exportResumoExecutivo = () => {
+    const header = [
+      "Unidade",
+      "Total de Denuncias",
+      "Score Total",
+      "Score Medio",
+      "Nivel de Risco",
+      "Qtd Risco Imediato",
+      "% Risco Imediato"
+    ];
+
+    const rows = resumoUnidades.map((r) => [
+      r.unidade,
+      r.denuncias,
+      r.scoreTotal,
+      r.scoreMedio.toFixed(2),
+      r.faixa.label,
+      r.riscoImediato,
+      r.denuncias > 0 ? `${Math.round((r.riscoImediato / r.denuncias) * 100)}%` : "0%"
+    ]);
+
+    const csv = [header, ...rows]
+      .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    downloadFile(`resumo_executivo_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
   };
 
   return (
@@ -1622,7 +1724,7 @@ function AdminPanel() {
           <div className="md:col-span-4">
             <input
               className="w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              placeholder="Buscar por protocolo, unidade, categoria, descrição…"
+              placeholder="Buscar por protocolo, unidade, categoria, denunciado..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -1653,7 +1755,13 @@ function AdminPanel() {
             </button>
             <button
               className="px-4 py-3 rounded-lg border hover:bg-slate-50"
-              onClick={exportExcelExecutivo}
+              onClick={exportBaseDetalhada}
+            >
+              Excel Base
+            </button>
+            <button
+              className="px-4 py-3 rounded-lg border hover:bg-slate-50"
+              onClick={exportResumoExecutivo}
             >
               Excel Executivo
             </button>
@@ -1665,28 +1773,28 @@ function AdminPanel() {
             <div className="text-xs text-slate-500">Total de denúncias</div>
             <div className="text-2xl font-bold">{total}</div>
           </div>
+
           <div className="rounded-xl border p-4 bg-white shadow">
             <div className="text-xs text-slate-500">% risco imediato</div>
             <div className="text-2xl font-bold">
-              {total > 0
-                ? `${Math.round(
-                    (filtered.filter((x) => x.perguntas?.riscoImediato === "Sim, risco imediato").length / total) * 100
-                  )}%`
-                : "0%"}
+              {total > 0 ? `${Math.round((riscoImediatoQtd / total) * 100)}%` : "0%"}
             </div>
           </div>
+
           <div className="rounded-xl border p-4 bg-white shadow">
             <div className="text-xs text-slate-500">% anônimas</div>
             <div className="text-2xl font-bold">
-              {total > 0
-                ? `${Math.round((filtered.filter((x) => x.anonimo).length / total) * 100)}%`
-                : "0%"}
+              {total > 0 ? `${Math.round((anonimas / total) * 100)}%` : "0%"}
             </div>
           </div>
-          <div className="rounded-xl border p-4 bg-white shadow">
-            <div className="text-xs text-slate-500">Com anexos</div>
-            <div className="text-2xl font-bold">
-              {filtered.filter((x) => Array.isArray(x.anexos) && x.anexos.length > 0).length}
+
+          <div className={`rounded-xl border p-4 shadow ${faixaRisco(scoreMedioGeral).bg} ${faixaRisco(scoreMedioGeral).border}`}>
+            <div className="text-xs text-slate-500">Score médio geral</div>
+            <div className={`text-2xl font-bold ${faixaRisco(scoreMedioGeral).text}`}>
+              {scoreMedioGeral.toFixed(2)}
+            </div>
+            <div className={`text-sm font-medium ${faixaRisco(scoreMedioGeral).text}`}>
+              {faixaRisco(scoreMedioGeral).label} risco
             </div>
           </div>
         </div>
@@ -1696,7 +1804,54 @@ function AdminPanel() {
           <BarList title="Por categoria" data={porCategoria} />
           <BarList title="Por unidade" data={porUnidade} />
           <BarList title="Por plantão" data={porPlantao} />
-          <BarList title="Score de risco por unidade" data={riscoPorUnidade} />
+          <BarList title="Score total por unidade" data={riscoPorUnidade} />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          <div className="rounded-xl border p-4 bg-white shadow space-y-3">
+            <div className="font-medium">Semáforo de risco por unidade</div>
+            <div className="space-y-2">
+              {resumoUnidades.length === 0 && (
+                <div className="text-xs text-slate-500">Sem dados no filtro atual.</div>
+              )}
+              {resumoUnidades.map((r) => (
+                <div key={r.unidade} className={`rounded-lg border p-3 flex items-center justify-between ${r.faixa.bg} ${r.faixa.border}`}>
+                  <div>
+                    <div className="font-semibold">{r.unidade}</div>
+                    <div className="text-xs text-slate-600">
+                      {r.denuncias} denúncia(s) • Score total {r.scoreTotal} • Média {r.scoreMedio.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${r.faixa.text} bg-white/70`}>
+                    {r.faixa.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border p-4 bg-white shadow space-y-3">
+            <div className="font-medium">Maiores denunciados por restaurante</div>
+            <div className="space-y-2">
+              {maioresDenunciados.length === 0 && (
+                <div className="text-xs text-slate-500">Sem denunciados identificados no filtro atual.</div>
+              )}
+              {maioresDenunciados.map((d, idx) => (
+                <div key={`${d.nome}-${d.unidade}-${idx}`} className="rounded-lg border p-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">{d.nome}</div>
+                    <div className="text-xs text-slate-600">
+                      {d.unidade}{d.cargo ? ` • ${d.cargo}` : ""} • {d.qtd} denúncia(s)
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold">{d.scoreTotal}</div>
+                    <div className="text-xs text-slate-500">score</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {sel && (
@@ -1865,7 +2020,7 @@ function AdminPanel() {
                 <th className="p-2 border-b">Unidade</th>
                 <th className="p-2 border-b">Categoria</th>
                 <th className="p-2 border-b">Detalhamento</th>
-                <th className="p-2 border-b">Onde</th>
+                <th className="p-2 border-b">Denunciado</th>
                 <th className="p-2 border-b">Risco</th>
                 <th className="p-2 border-b">Status</th>
                 <th className="p-2 border-b">Ações</th>
@@ -1898,7 +2053,7 @@ function AdminPanel() {
                   <td className="p-2 border-b">{c.unidade}</td>
                   <td className="p-2 border-b">{c.categoria}</td>
                   <td className="p-2 border-b">{c.subcategoria || "-"}</td>
-                  <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
+                  <td className="p-2 border-b">{c.denunciado?.nome || "-"}</td>
                   <td className="p-2 border-b">{c.perguntas?.riscoImediato || "-"}</td>
                   <td className="p-2 border-b">{c.status || "-"}</td>
                   <td className="p-2 border-b">

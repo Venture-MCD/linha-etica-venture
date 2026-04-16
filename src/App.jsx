@@ -29,7 +29,7 @@ import {
 const POLICY_VERSION = "1.0";
 const POLICY_UPDATED = "09/10/2025";
 const CONSENT_KEY = "consent_ok";
-const ADMIN_PASS = "Venture@4266";
+const ADMIN_PASS = "Venture@4266!";
 
 /* ==================== Helpers async robustos ==================== */
 function withTimeout(promise, ms, label = "operação") {

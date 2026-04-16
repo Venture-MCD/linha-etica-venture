@@ -1255,7 +1255,7 @@ function AdminPanel() {
   const [sel, setSel] = useState(null);
 
   const [selected, setSelected] = useState(new Set());
-  const allSelected = selected.size > 0 && selected.size === lista.length;
+  const allSelected = selected.size > 0 && selected.size === filtered.length;
   const anySelected = selected.size > 0;
 
   const [newCount, setNewCount] = useState(0);
@@ -1272,6 +1272,19 @@ function AdminPanel() {
       return ts.getTime?.() || 0;
     } catch {
       return 0;
+    }
+  };
+
+  const fmtDate = (ts) => {
+    if (!ts) return "-";
+    try {
+      if (ts?.toDate) ts = ts.toDate();
+      if (typeof ts === "string") ts = new Date(ts);
+      const d = ts;
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+      return "-";
     }
   };
 
@@ -1434,7 +1447,7 @@ function AdminPanel() {
 
   const toggleAll = () => {
     if (allSelected) setSelected(new Set());
-    else setSelected(new Set(lista.map((x) => x.id)));
+    else setSelected(new Set(filtered.map((x) => x.id)));
   };
 
   const onDeleteSelected = async () => {
@@ -1461,17 +1474,123 @@ function AdminPanel() {
     alert("Denúncia excluída.");
   };
 
-  const fmtDate = (ts) => {
-    if (!ts) return "-";
-    try {
-      if (ts?.toDate) ts = ts.toDate();
-      if (typeof ts === "string") ts = new Date(ts);
-      const d = ts;
-      const pad = (n) => String(n).padStart(2, "0");
-      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    } catch {
-      return "-";
-    }
+  const countBy = (arr, keyFn) =>
+    arr.reduce((acc, x) => {
+      const k = keyFn(x) || "-";
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
+
+  const calcularScoreRisco = (c) => {
+    let score = 1;
+
+    if (c.perguntas?.riscoImediato === "Sim, risco imediato") score += 5;
+    else if (c.perguntas?.riscoImediato === "Pode haver risco") score += 2;
+
+    if (["Assédio", "Fraude", "Corrupção"].includes(c.categoria)) score += 3;
+
+    if (c.perguntas?.periodicidade === "recorrente") score += 2;
+    if (c.perguntas?.periodicidade === "contínuo") score += 3;
+
+    return score;
+  };
+
+  const total = filtered.length;
+  const porStatus = countBy(filtered, (x) => x.status || "Sem status");
+  const porCategoria = countBy(filtered, (x) => x.categoria);
+  const porUnidade = countBy(filtered, (x) => x.unidade);
+  const porPlantao = countBy(filtered, (x) => x.perguntas?.plantao);
+
+  const riscoPorUnidade = {};
+  filtered.forEach((c) => {
+    const unidade = c.unidade || "N/A";
+    const score = calcularScoreRisco(c);
+    if (!riscoPorUnidade[unidade]) riscoPorUnidade[unidade] = 0;
+    riscoPorUnidade[unidade] += score;
+  });
+
+  const maxVal = Math.max(
+    1,
+    ...Object.values(porStatus),
+    ...Object.values(porCategoria),
+    ...Object.values(porUnidade),
+    ...Object.values(porPlantao),
+    ...Object.values(riscoPorUnidade)
+  );
+
+  const BarList = ({ title, data }) => (
+    <div className="rounded-xl border p-4 bg-white shadow space-y-2">
+      <div className="font-medium">{title}</div>
+      <div className="space-y-2">
+        {Object.entries(data).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+          <div key={k}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-600">{k}</span>
+              <span className="text-slate-500">{v}</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded">
+              <div
+                className="h-2 bg-emerald-600 rounded"
+                style={{ width: `${(v / maxVal) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+        {Object.keys(data).length === 0 && (
+          <div className="text-xs text-slate-500">Sem dados no filtro atual.</div>
+        )}
+      </div>
+    </div>
+  );
+
+  function downloadFile(name, mime, content) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const exportExcelExecutivo = () => {
+    const header = [
+      "Protocolo",
+      "Data",
+      "Unidade",
+      "Categoria",
+      "Subcategoria",
+      "Plantão",
+      "Risco Imediato",
+      "Descrição do Risco",
+      "Status",
+      "Score de Risco",
+      "Descrição"
+    ];
+
+    const rows = filtered.map((c) => [
+      c.protocolo || c.id,
+      fmtDate(c.createdAt),
+      c.unidade || "",
+      c.categoria || "",
+      c.subcategoria || "",
+      c.perguntas?.plantao || "",
+      c.perguntas?.riscoImediato || "",
+      c.perguntas?.descricaoRisco || "",
+      c.status || "",
+      calcularScoreRisco(c),
+      (c.descricao || "").replace(/\n/g, " ")
+    ]);
+
+    const csv = [header, ...rows]
+      .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    downloadFile(
+      `dashboard_executivo_${Date.now()}.csv`,
+      "text/csv;charset=utf-8;",
+      csv
+    );
   };
 
   return (
@@ -1500,7 +1619,7 @@ function AdminPanel() {
         )}
 
         <div className="grid md:grid-cols-12 gap-2">
-          <div className="md:col-span-5">
+          <div className="md:col-span-4">
             <input
               className="w-full h-12 rounded-lg border px-3 py-0 text-[15px] leading-[48px] focus:outline-none focus:ring-2 focus:ring-emerald-600"
               placeholder="Buscar por protocolo, unidade, categoria, descrição…"
@@ -1523,7 +1642,7 @@ function AdminPanel() {
               </select>
             </div>
           </div>
-          <div className="md:col-span-4 flex flex-wrap gap-2">
+          <div className="md:col-span-5 flex flex-wrap gap-2">
             <a href="#/" className="px-4 py-3 rounded-lg border hover:bg-slate-50">Home</a>
             <button
               className={`px-4 py-3 rounded-lg border hover:bg-slate-50 ${anySelected ? "" : "opacity-50 cursor-not-allowed"}`}
@@ -1532,7 +1651,52 @@ function AdminPanel() {
             >
               Excluir selecionados
             </button>
+            <button
+              className="px-4 py-3 rounded-lg border hover:bg-slate-50"
+              onClick={exportExcelExecutivo}
+            >
+              Excel Executivo
+            </button>
           </div>
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-3">
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">Total de denúncias</div>
+            <div className="text-2xl font-bold">{total}</div>
+          </div>
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">% risco imediato</div>
+            <div className="text-2xl font-bold">
+              {total > 0
+                ? `${Math.round(
+                    (filtered.filter((x) => x.perguntas?.riscoImediato === "Sim, risco imediato").length / total) * 100
+                  )}%`
+                : "0%"}
+            </div>
+          </div>
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">% anônimas</div>
+            <div className="text-2xl font-bold">
+              {total > 0
+                ? `${Math.round((filtered.filter((x) => x.anonimo).length / total) * 100)}%`
+                : "0%"}
+            </div>
+          </div>
+          <div className="rounded-xl border p-4 bg-white shadow">
+            <div className="text-xs text-slate-500">Com anexos</div>
+            <div className="text-2xl font-bold">
+              {filtered.filter((x) => Array.isArray(x.anexos) && x.anexos.length > 0).length}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-5 gap-3">
+          <BarList title="Por status" data={porStatus} />
+          <BarList title="Por categoria" data={porCategoria} />
+          <BarList title="Por unidade" data={porUnidade} />
+          <BarList title="Por plantão" data={porPlantao} />
+          <BarList title="Score de risco por unidade" data={riscoPorUnidade} />
         </div>
 
         {sel && (
@@ -1591,8 +1755,8 @@ function AdminPanel() {
                 <div>{sel.perguntas?.riscoImediato || "-"}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500">Recorrência</div>
-                <div>{sel.perguntas?.periodicidade || "-"}</div>
+                <div className="text-xs text-slate-500">Score de risco</div>
+                <div>{calcularScoreRisco(sel)}</div>
               </div>
 
               {sel.perguntas?.descricaoRisco && (
@@ -1694,11 +1858,7 @@ function AdminPanel() {
             <thead className="bg-slate-50 text-left">
               <tr>
                 <th className="p-2 border-b w-10">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                  />
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
                 </th>
                 <th className="p-2 border-b">Protocolo</th>
                 <th className="p-2 border-b">Data/Hora</th>
@@ -1720,16 +1880,9 @@ function AdminPanel() {
                 </tr>
               )}
               {filtered.map((c) => (
-                <tr
-                  key={c.id}
-                  className={`hover:bg-slate-50 ${newIds.has(c.id) ? "bg-emerald-50" : ""}`}
-                >
+                <tr key={c.id} className={`hover:bg-slate-50 ${newIds.has(c.id) ? "bg-emerald-50" : ""}`}>
                   <td className="p-2 border-b">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.id)}
-                      onChange={() => toggleOne(c.id)}
-                    />
+                    <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleOne(c.id)} />
                   </td>
                   <td className="p-2 border-b font-mono">
                     <div className="flex items-center gap-2">

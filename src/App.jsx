@@ -168,12 +168,83 @@ const Nav = () => {
 
 /* ==================== Dados & Utils ==================== */
 const UNIDADES = ["AGG", "SEC", "ECL", "CLP", "TAP", "CGG", "EXJ", "KIZ", "SEB", "DAP"];
-const CATEGORIAS = ["Assédio", "Fraude", "Conflito de Interesses", "Outro"];
+
+const CATEGORIAS = {
+  "Fraude": [
+    "Fraude",
+    "Roubo",
+    "Furto",
+    "Gastos irregulares"
+  ],
+  "Adulteração": [
+    "Adulteração de informação",
+    "Adulteração de documentos"
+  ],
+  "Assédio": [
+    "Assédio moral",
+    "Assédio sexual",
+    "Discriminação",
+    "Maus tratos"
+  ],
+  "Mau desempenho": [
+    "Mau comportamento",
+    "Abuso de poder",
+    "Favoritismo"
+  ],
+  "Corrupção": [
+    "Corrupção",
+    "Acordos irregulares"
+  ],
+  "Mau uso de bens": [
+    "Descuido de bens",
+    "Uso indevido de recursos"
+  ],
+  "Roubo de informação": [
+    "Roubo de informação interna",
+    "Vazamento de dados"
+  ],
+  "Melhoria de processos": [
+    "Melhoria de processos"
+  ],
+  "Relato livre": [
+    "Outro"
+  ]
+};
+
+const CATEGORIA_DESCRICOES = {
+  "Fraude": "Fraude, Roubo, Furto e Gastos irregulares",
+  "Adulteração": "Adulteração de informação e documentos",
+  "Assédio": "Assédio, discriminação e maus tratos",
+  "Mau desempenho": "Mau comportamento, Abuso de Poder e Favoritismo",
+  "Corrupção": "Corrupção e Acordos Irregulares",
+  "Mau uso de bens": "Descuido de bens e serviços",
+  "Roubo de informação": "Roubo de informação interna",
+  "Melhoria de processos": "Melhoria de Processos",
+  "Relato livre": "Descreva os fatos de forma detalhada"
+};
+
 const genProtocolo = () => Math.random().toString(36).substring(2, 10).toUpperCase();
 const AvisosSeguranca = () => (
   <div className="text-xs text-slate-500">
     ⚠️ Protótipo: dados operacionais na nuvem (Firestore/Storage). Ajuste regras antes de produção.
   </div>
+);
+
+const CategoriaCard = ({ titulo, descricao, ativo, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`text-left rounded-xl border p-5 min-h-[160px] transition shadow-sm hover:shadow ${
+      ativo
+        ? "bg-emerald-600 text-white border-emerald-700"
+        : "bg-white text-slate-800 hover:border-emerald-300"
+    }`}
+  >
+    <div className="font-bold text-lg mb-4">{titulo}</div>
+    <div className={`text-sm leading-7 ${ativo ? "text-white/95" : "text-slate-600"}`}>
+      {descricao}
+    </div>
+  </button>
 );
 
 /* ==================== HOME ==================== */
@@ -298,9 +369,17 @@ function Termos() {
 function Report() {
   const [step, setStep] = useState(1);
   const [unidade, setUnidade] = useState(UNIDADES[0]);
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+  const [categoria, setCategoria] = useState("");
+  const [subcategoria, setSubcategoria] = useState("");
+  const [denunciado, setDenunciado] = useState({
+    nome: "",
+    cargo: "",
+    sexo: ""
+  });
+
   const [dataUnica, setDataUnica] = useState("");
   const [periodicidade, setPeriodicidade] = useState("único");
+  const [plantao, setPlantao] = useState("");
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
   const [valorFinanceiro, setValorFinanceiro] = useState("");
@@ -338,17 +417,28 @@ function Report() {
     ? "A data não pode estar no futuro."
     : "";
 
-  const canNext1 = !!unidade && !!categoria;
-  const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError;
+  const canNext1 = !!unidade && !!categoria && !!subcategoria;
+  const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError && !!plantao;
   const canSubmit = canNext1 && canNext2;
 
   // idempotency key
   const payloadHash = () => {
     const payload = {
-      unidade, categoria, dataUnica, periodicidade, onde,
+      unidade,
+      categoria,
+      subcategoria,
+      denunciado,
+      dataUnica,
+      periodicidade,
+      plantao,
+      onde,
       descricao: descricao.trim(),
-      valorFinanceiro, foiReportado, paraQuem,
-      anonimo, contato, prefer,
+      valorFinanceiro,
+      foiReportado,
+      paraQuem,
+      anonimo,
+      contato,
+      prefer,
       files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
     };
     const s = JSON.stringify(payload);
@@ -359,21 +449,21 @@ function Report() {
 
   const onSubmit = async () => {
     if (!canSubmit) {
-      alert("Preencha os campos obrigatórios (data válida, onde e descrição ≥ 100).");
+      alert("Preencha os campos obrigatórios.");
       return;
     }
     if (submitting) return;
 
-    const key = payloadHash();
-    const last = sessionStorage.getItem("last_submit_hash");
-    if (last && last === key) {
-      alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
+      const key = payloadHash();
+      const last = sessionStorage.getItem("last_submit_hash");
+      if (last && last === key) {
+        alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+        return;
+      }
+
       sessionStorage.setItem("last_submit_hash", key);
 
       // autenticação anônima p/ regras do Storage/Firestore
@@ -394,7 +484,7 @@ function Report() {
         try {
           const ok = files.filter((f) => f.size <= 8 * 1024 * 1024);
           if (ok.length !== files.length) {
-            alert("Alguns arquivos foram ignorados: tamanho acima de 8MB.");
+            alert("Alguns arquivos foram ignorados por exceder 8MB.");
           }
           anexosSubidos = await uploadAllFiles(protocolo, ok, uploadFile, 25000);
         } catch (err) {
@@ -404,14 +494,17 @@ function Report() {
         }
       }
 
-      // Salva denúncia no Firestore (idempotente pelo protocolo)
+      // Salva denúncia no Firestore
       const data = {
         protocolo,
         unidade,
         categoria,
+        subcategoria,
+        denunciado,
         perguntas: {
           periodo: { tipo: "unico", data: dataUnica },
           periodicidade,
+          plantao,
           onde,
           valorFinanceiro,
           foiReportado,
@@ -483,7 +576,7 @@ function Report() {
         </div>
 
         {step === 1 && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="grid md:grid-cols-2 gap-4 items-start">
               <Field label="Unidade *">
                 <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
@@ -492,14 +585,83 @@ function Report() {
                   ))}
                 </SelectBase>
               </Field>
-              <Field label="Categoria *">
-                <SelectBase value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-                  {CATEGORIAS.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">
+                Motivo da denúncia <span className="text-rose-600">*</span>
+              </div>
+              <div className="grid md:grid-cols-4 gap-4">
+                {Object.keys(CATEGORIAS).map((cat) => (
+                  <CategoriaCard
+                    key={cat}
+                    titulo={cat}
+                    descricao={CATEGORIA_DESCRICOES[cat]}
+                    ativo={categoria === cat}
+                    onClick={() => {
+                      setCategoria(cat);
+                      setSubcategoria("");
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4 items-start">
+              <Field label="Detalhamento *" hint="Selecione o assunto específico">
+                <SelectBase
+                  value={subcategoria}
+                  onChange={(e) => setSubcategoria(e.target.value)}
+                  disabled={!categoria}
+                >
+                  <option value="">Selecione...</option>
+                  {categoria &&
+                    CATEGORIAS[categoria].map((sub) => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
                 </SelectBase>
               </Field>
             </div>
+
+            <Card className="space-y-4">
+              <div className="font-semibold">Dados do denunciado (se souber)</div>
+              <div className="grid md:grid-cols-3 gap-4">
+                <Field label="Nome">
+                  <input
+                    className={inputClass}
+                    value={denunciado.nome}
+                    onChange={(e) =>
+                      setDenunciado({ ...denunciado, nome: e.target.value })
+                    }
+                  />
+                </Field>
+
+                <Field label="Cargo">
+                  <input
+                    className={inputClass}
+                    value={denunciado.cargo}
+                    onChange={(e) =>
+                      setDenunciado({ ...denunciado, cargo: e.target.value })
+                    }
+                  />
+                </Field>
+
+                <Field label="Sexo">
+                  <SelectBase
+                    value={denunciado.sexo}
+                    onChange={(e) =>
+                      setDenunciado({ ...denunciado, sexo: e.target.value })
+                    }
+                  >
+                    <option value="">Selecione</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Feminino">Feminino</option>
+                    <option value="Outro">Outro</option>
+                  </SelectBase>
+                </Field>
+              </div>
+            </Card>
+
             <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
               <a href="#/" className={btnOutline}>Home</a>
               <button disabled={!canNext1 || submitting} onClick={() => setStep(2)} className={btnPrimary}>
@@ -533,6 +695,16 @@ function Report() {
                 </Field>
               </div>
               <div className="md:col-span-4">
+                <Field label="Plantão *" hint="Período do ocorrido">
+                  <SelectBase value={plantao} onChange={(e) => setPlantao(e.target.value)}>
+                    <option value="">Selecione</option>
+                    <option value="Diurno">Diurno</option>
+                    <option value="Noturno">Noturno</option>
+                    <option value="Madrugada">Madrugada</option>
+                  </SelectBase>
+                </Field>
+              </div>
+              <div className="md:col-span-12">
                 <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
                   <input
                     className={inputClass}
@@ -768,7 +940,7 @@ function AdminPanel() {
   const allSelected = selected.size > 0 && selected.size === lista.length;
   const anySelected = selected.size > 0;
 
-  // ref para o bloco de detalhes (fica logo abaixo dos filtros)
+  // ref para o bloco de detalhes
   const detailRef = useRef(null);
 
   // helper: normaliza Timestamp/Date/string -> millis
@@ -789,23 +961,21 @@ function AdminPanel() {
       const sorted = [...arr].sort((a, b) => {
         const aMs = tsToMs(a.createdAt) || tsToMs(a.updatedAt);
         const bMs = tsToMs(b.createdAt) || tsToMs(b.updatedAt);
-        return bMs - aMs; // desc
+        return bMs - aMs;
       });
       setLista(sorted);
-      // limpa seleção de itens removidos
       setSelected((prev) => new Set([...prev].filter((id) => sorted.find((x) => x.id === id))));
     });
     return () => unsub && unsub();
   }, []);
 
-  // ao selecionar um item, rola o bloco de detalhes "pra cima"
+  // ao selecionar, rola o detalhe pra cima
   useEffect(() => {
     if (sel && detailRef.current) {
       detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [sel]);
 
-  // busca textual
   const filtroTexto = (c) => {
     if (!q.trim()) return true;
     const s = q.toLowerCase();
@@ -814,12 +984,12 @@ function AdminPanel() {
       c.protocolo?.toLowerCase?.().includes(s) ||
       c.unidade?.toLowerCase?.().includes(s) ||
       c.categoria?.toLowerCase?.().includes(s) ||
+      c.subcategoria?.toLowerCase?.().includes(s) ||
       c.perguntas?.onde?.toLowerCase?.().includes(s) ||
       c.descricao?.toLowerCase?.().includes(s)
     );
   };
 
-  // filtro por status
   const filtroStatus = (c) => {
     if (statusFilter === "todos") return true;
     const st = (c.status || "").toLowerCase();
@@ -929,7 +1099,7 @@ function AdminPanel() {
     }
   };
 
-  /* ==================== Dashboard (sobre 'filtered') ==================== */
+  /* ==================== Dashboard ==================== */
   const countBy = (arr, keyFn) =>
     arr.reduce((acc, x) => {
       const k = keyFn(x) || "-";
@@ -941,12 +1111,14 @@ function AdminPanel() {
   const porStatus = countBy(filtered, (x) => (x.status || "Sem status"));
   const porCategoria = countBy(filtered, (x) => x.categoria);
   const porUnidade = countBy(filtered, (x) => x.unidade);
+  const porPlantao = countBy(filtered, (x) => x.perguntas?.plantao);
 
   const maxVal = Math.max(
     1,
     ...Object.values(porStatus),
     ...Object.values(porCategoria),
-    ...Object.values(porUnidade)
+    ...Object.values(porUnidade),
+    ...Object.values(porPlantao)
   );
 
   const BarList = ({ title, data }) => (
@@ -982,8 +1154,13 @@ function AdminPanel() {
       "updatedAt",
       "unidade",
       "categoria",
+      "subcategoria",
+      "denunciado.nome",
+      "denunciado.cargo",
+      "denunciado.sexo",
       "onde",
       "quando",
+      "plantao",
       "periodicidade",
       "impactoFinanceiro",
       "reportado",
@@ -1011,8 +1188,13 @@ function AdminPanel() {
         fmtDate(c.updatedAt),
         c.unidade || "",
         c.categoria || "",
+        c.subcategoria || "",
+        c.denunciado?.nome || "",
+        c.denunciado?.cargo || "",
+        c.denunciado?.sexo || "",
         c.perguntas?.onde || "",
         c.perguntas?.periodo?.data || "",
+        c.perguntas?.plantao || "",
         c.perguntas?.periodicidade || "",
         c.perguntas?.valorFinanceiro || "",
         c.perguntas?.foiReportado || "",
@@ -1056,7 +1238,6 @@ function AdminPanel() {
     downloadFile(`denuncias_selecionadas_${Date.now()}.csv`, "text/csv;charset=utf-8;", csv);
   };
 
-  // "Exportar PDF" via impressão (abre uma janela com HTML e chama window.print)
   const exportPDFFiltered = () => {
     const rows = filtered;
     const htmlRows = rows
@@ -1067,6 +1248,7 @@ function AdminPanel() {
           <td>${fmtDate(c.createdAt)}</td>
           <td>${c.unidade || ""}</td>
           <td>${c.categoria || ""}</td>
+          <td>${c.subcategoria || ""}</td>
           <td>${(c.perguntas?.onde || "").replace(/</g,"&lt;")}</td>
           <td>${c.status || ""}</td>
         </tr>`
@@ -1096,6 +1278,7 @@ function AdminPanel() {
               <th>Data</th>
               <th>Unidade</th>
               <th>Categoria</th>
+              <th>Detalhamento</th>
               <th>Onde</th>
               <th>Status</th>
             </tr>
@@ -1174,7 +1357,7 @@ function AdminPanel() {
           </div>
         </div>
 
-        {/* ======== Dashboard (com base no FILTRO atual) ======== */}
+        {/* ======== Dashboard ======== */}
         <div className="grid md:grid-cols-3 gap-3">
           <div className="rounded-xl border p-4 bg-white shadow">
             <div className="text-xs text-slate-500">Total (filtro atual)</div>
@@ -1194,13 +1377,14 @@ function AdminPanel() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-4 gap-3">
           <BarList title="Por status" data={porStatus} />
           <BarList title="Por categoria" data={porCategoria} />
           <BarList title="Por unidade" data={porUnidade} />
+          <BarList title="Por plantão" data={porPlantao} />
         </div>
 
-        {/* ======== Detalhe AGORA fica logo abaixo do dashboard ======== */}
+        {/* ======== Detalhe ======== */}
         {sel && (
           <div ref={detailRef} className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
@@ -1231,12 +1415,20 @@ function AdminPanel() {
                 <div>{sel.categoria}</div>
               </div>
               <div>
+                <div className="text-xs text-slate-500">Detalhamento</div>
+                <div>{sel.subcategoria || "-"}</div>
+              </div>
+              <div>
                 <div className="text-xs text-slate-500">Onde</div>
                 <div>{sel.perguntas?.onde || "-"}</div>
               </div>
               <div>
                 <div className="text-xs text-slate-500">Quando</div>
                 <div>{sel.perguntas?.periodo?.data || "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Plantão</div>
+                <div>{sel.perguntas?.plantao || "-"}</div>
               </div>
               <div>
                 <div className="text-xs text-slate-500">Recorrência</div>
@@ -1258,6 +1450,17 @@ function AdminPanel() {
                 <div className="text-xs text-slate-500">Anonimato</div>
                 <div>{sel.anonimo ? "Sim" : "Não"}</div>
               </div>
+
+              {(sel.denunciado?.nome || sel.denunciado?.cargo || sel.denunciado?.sexo) && (
+                <div className="md:col-span-2">
+                  <div className="text-xs text-slate-500">Dados do denunciado</div>
+                  <div className="text-sm">
+                    {sel.denunciado?.nome ? <div><strong>Nome:</strong> {sel.denunciado.nome}</div> : null}
+                    {sel.denunciado?.cargo ? <div><strong>Cargo:</strong> {sel.denunciado.cargo}</div> : null}
+                    {sel.denunciado?.sexo ? <div><strong>Sexo:</strong> {sel.denunciado.sexo}</div> : null}
+                  </div>
+                </div>
+              )}
 
               {!sel.anonimo && sel.contato && (
                 <div className="md:col-span-2">
@@ -1370,7 +1573,7 @@ function AdminPanel() {
                 <span className="font-medium">{c.unidade}</span> • {c.categoria}
               </div>
               <div className="text-xs text-slate-600">
-                {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0} • {c.anonimo ? "Anônimo" : "Identificado"}
+                {c.subcategoria || "-"} • {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0}
               </div>
               <div className="flex gap-2 pt-1">
                 <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
@@ -1397,6 +1600,7 @@ function AdminPanel() {
                 <th className="p-2 border-b">Data/Hora</th>
                 <th className="p-2 border-b">Unidade</th>
                 <th className="p-2 border-b">Categoria</th>
+                <th className="p-2 border-b">Detalhamento</th>
                 <th className="p-2 border-b">Onde</th>
                 <th className="p-2 border-b">Anon.</th>
                 <th className="p-2 border-b">Status</th>
@@ -1407,7 +1611,7 @@ function AdminPanel() {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-3 text-center text-slate-500">
+                  <td colSpan={11} className="p-3 text-center text-slate-500">
                     Sem registros.
                   </td>
                 </tr>
@@ -1426,6 +1630,7 @@ function AdminPanel() {
                   <td className="p-2 border-b whitespace-nowrap">{fmtDate(c.createdAt)}</td>
                   <td className="p-2 border-b">{c.unidade}</td>
                   <td className="p-2 border-b">{c.categoria}</td>
+                  <td className="p-2 border-b">{c.subcategoria || "-"}</td>
                   <td className="p-2 border-b">{c.perguntas?.onde || "-"}</td>
                   <td className="p-2 border-b">{c.anonimo ? "Sim" : "Não"}</td>
                   <td className="p-2 border-b">{c.status || "-"}</td>
@@ -1446,6 +1651,7 @@ function AdminPanel() {
     </section>
   );
 }
+
 /* ==================== ADMIN protegido ==================== */
 function AdminProtected() {
   const [ok, setOk] = useState(sessionStorage.getItem("admin_ok") === "1");

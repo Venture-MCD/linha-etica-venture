@@ -979,6 +979,27 @@ function Report() {
 
 /* ==================== STATUS ==================== */
 function Status() {
+  const formatDate = (dt) => {
+  if (!dt) return "-";
+
+  try {
+    if (dt?.toDate) {
+      return dt.toDate().toLocaleString("pt-BR");
+    }
+
+    if (typeof dt === "string") {
+      return new Date(dt).toLocaleString("pt-BR");
+    }
+
+    if (dt?.seconds) {
+      return new Date(dt.seconds * 1000).toLocaleString("pt-BR");
+    }
+
+    return "-";
+  } catch {
+    return "-";
+  }
+};
   const [proto, setProto] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1065,8 +1086,8 @@ function Status() {
             </div>
 
             <div className="text-xs text-slate-500">
-              Criado em: {data.createdAt ? new Date(data.createdAt).toLocaleString() : "-"}
-            </div>
+  Criado em: {formatDate(data.createdAt)}
+</div>
           </div>
 
           {/* LINHA DO TEMPO */}
@@ -1124,8 +1145,8 @@ function Status() {
 
             <div className="text-sm text-slate-600 space-y-1">
               <div>• Confirmação do recebimento: imediata</div>
-              <div>• Triagem inicial: até 5 dias úteis</div>
-              <div>• Atualização de andamento: até 10 dias úteis</div>
+              <div>• Triagem inicial: até 10 dias úteis</div>
+              <div>• Atualização de andamento: até 20 dias úteis</div>
               <div>• Conclusão: varia conforme o caso</div>
             </div>
           </div>

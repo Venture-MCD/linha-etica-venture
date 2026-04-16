@@ -980,39 +980,175 @@ function Report() {
 /* ==================== STATUS ==================== */
 function Status() {
   const [proto, setProto] = useState("");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const onCheck = async () => {
+  const consultar = async () => {
     if (!proto.trim()) return;
-    const res = await getReportByProtocol(proto.trim());
-    if (!res) {
-      alert("Protocolo não encontrado.");
-      return;
+
+    setLoading(true);
+    setError("");
+    setData(null);
+
+    try {
+      const res = await getReportByProtocol(proto.trim());
+
+      if (!res) {
+        setError("Protocolo não encontrado.");
+        return;
+      }
+
+      setData(res);
+    } catch (e) {
+      console.error(e);
+      setError("Erro ao consultar. Tente novamente.");
+    } finally {
+      setLoading(false);
     }
-    const status = res.status || "-";
-    const ult = (res.notes || []).slice(-1)[0];
-    alert(
-      `Status: ${status}` +
-        (ult ? `\nÚltima atualização: ${ult.text || ""}` : "")
-    );
   };
+
+  const statusColor = {
+    "Recebido": "bg-blue-100 text-blue-700",
+    "Em análise": "bg-yellow-100 text-yellow-700",
+    "Em contato": "bg-orange-100 text-orange-700",
+    "Concluído": "bg-emerald-100 text-emerald-700"
+  };
+
+  const etapas = [
+    { key: "Recebido", label: "Denúncia recebida" },
+    { key: "Em análise", label: "Em análise" },
+    { key: "Em contato", label: "Em tratativa" },
+    { key: "Concluído", label: "Concluído" }
+  ];
+
+  const currentIndex = etapas.findIndex(e => e.key === data?.status);
 
   return (
     <section className="space-y-4 md:space-y-6">
-      <Card className="space-y-3 md:space-y-4">
+      <Card className="space-y-4">
         <h3 className="text-lg font-semibold">Acompanhar denúncia</h3>
+
         <Field label="Protocolo" hint="Digite o código recebido ao enviar a denúncia">
-          <input className={inputClass} value={proto} onChange={(e) => setProto(e.target.value)} />
+          <input
+            className={inputClass}
+            value={proto}
+            onChange={(e) => setProto(e.target.value)}
+          />
         </Field>
-        <div className="flex flex-col md:flex-row gap-2 md:gap-3">
-          <button onClick={onCheck} className={btnPrimary}>Consultar</button>
-          <a href="#/" className={btnOutline}>Voltar para Home</a>
+
+        <div className="flex gap-2">
+          <button onClick={consultar} className={btnPrimary}>
+            {loading ? "Consultando..." : "Consultar"}
+          </button>
+          <a href="#/" className={btnOutline}>Voltar</a>
         </div>
+
+        {error && (
+          <div className="text-sm text-rose-600">{error}</div>
+        )}
       </Card>
+
+      {/* RESULTADO */}
+      {data && (
+        <Card className="space-y-6">
+
+          {/* HEADER */}
+          <div className="text-center space-y-2">
+            <div className="text-sm text-slate-500">Protocolo</div>
+            <div className="font-mono text-xl font-bold text-emerald-700">
+              {data.protocolo}
+            </div>
+
+            <div className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${statusColor[data.status]}`}>
+              {data.status}
+            </div>
+
+            <div className="text-xs text-slate-500">
+              Criado em: {data.createdAt ? new Date(data.createdAt).toLocaleString() : "-"}
+            </div>
+          </div>
+
+          {/* LINHA DO TEMPO */}
+          <div className="space-y-3">
+            <div className="font-semibold">Andamento</div>
+
+            <div className="flex flex-col gap-3">
+              {etapas.map((etapa, i) => {
+                const ativo = i <= currentIndex;
+
+                return (
+                  <div key={etapa.key} className="flex items-center gap-3">
+                    <div className={`w-4 h-4 rounded-full ${ativo ? "bg-emerald-600" : "bg-slate-300"}`} />
+                    <div className={ativo ? "text-slate-800 font-medium" : "text-slate-400"}>
+                      {etapa.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ÚLTIMA ATUALIZAÇÃO */}
+          {data.notes?.length > 0 && (
+            <div className="space-y-2">
+              <div className="font-semibold">Última atualização</div>
+              <div className="text-sm text-slate-600 border rounded-lg p-3 bg-slate-50">
+                {data.notes[data.notes.length - 1].text}
+              </div>
+            </div>
+          )}
+
+          {/* MENSAGEM DE TRANQUILIZAÇÃO */}
+          <div className="space-y-2">
+            <div className="font-semibold">O que acontece agora?</div>
+
+            <div className="text-sm text-slate-600 space-y-2">
+              <p>
+                Sua denúncia foi registrada com sucesso e está sendo tratada com total confidencialidade.
+              </p>
+
+              <p>
+                O processo pode envolver etapas como triagem inicial, análise detalhada e coleta de informações adicionais.
+              </p>
+
+              <p>
+                O tempo de apuração pode variar conforme a complexidade do caso, garantindo uma avaliação justa e responsável.
+              </p>
+            </div>
+          </div>
+
+          {/* PRAZOS (SEM PROMETER) */}
+          <div className="space-y-2">
+            <div className="font-semibold">Prazos estimados</div>
+
+            <div className="text-sm text-slate-600 space-y-1">
+              <div>• Confirmação do recebimento: imediata</div>
+              <div>• Triagem inicial: até 5 dias úteis</div>
+              <div>• Atualização de andamento: até 10 dias úteis</div>
+              <div>• Conclusão: varia conforme o caso</div>
+            </div>
+          </div>
+
+          {/* ORIENTAÇÃO */}
+          <div className="space-y-2">
+            <div className="font-semibold">Orientações importantes</div>
+
+            <div className="text-sm text-slate-600 space-y-1">
+              <div>• Guarde seu protocolo para acompanhamento</div>
+              <div>• Consulte esta página periodicamente</div>
+              <div>• Evite compartilhar detalhes da denúncia</div>
+              <div>• Em caso de risco imediato, procure um responsável local</div>
+            </div>
+          </div>
+
+        </Card>
+      )}
+
       <AvisosSeguranca />
     </section>
   );
 }
-
 /* ==================== FAQ ==================== */
 function FAQ() {
   return (

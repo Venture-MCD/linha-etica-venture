@@ -368,30 +368,24 @@ function Termos() {
 /* ==================== REPORT ==================== */
 function Report() {
   const [step, setStep] = useState(1);
-
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [categoria, setCategoria] = useState("");
   const [subcategoria, setSubcategoria] = useState("");
-
   const [denunciado, setDenunciado] = useState({
     nome: "",
     cargo: "",
-    sexo: "",
+    sexo: ""
   });
 
   const [dataUnica, setDataUnica] = useState("");
   const [periodicidade, setPeriodicidade] = useState("único");
   const [plantao, setPlantao] = useState("");
-
   const [onde, setOnde] = useState("");
   const [descricao, setDescricao] = useState("");
-
   const [valorFinanceiro, setValorFinanceiro] = useState("");
   const [foiReportado, setFoiReportado] = useState("nao");
   const [paraQuem, setParaQuem] = useState("");
-
-  const [files, setFiles] = useState([]);
-
+  const [files, setFiles] = useState([]); // File[]
   const [anonimo, setAnonimo] = useState(true);
   const [contato, setContato] = useState({ nome: "", email: "", telefone: "" });
   const [prefer, setPrefer] = useState("email");
@@ -399,60 +393,157 @@ function Report() {
   const [emailAcompanhamento, setEmailAcompanhamento] = useState("");
   const [successData, setSuccessData] = useState(null);
 
+  // anti duplicação
   const [submitting, setSubmitting] = useState(false);
 
-  /* ==================== VALIDAÇÕES ==================== */
+  useEffect(() => {
+    if (sessionStorage.getItem(CONSENT_KEY) !== "1") {
+      window.location.hash = "#/termos";
+    }
+  }, []);
+
+  const isValidISODate = (s) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+  const isFuture = (s) => {
+    if (!isValidISODate(s)) return false;
+    const d = new Date(s);
+    const today = new Date();
+    d.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return d > today;
+  };
+  const dateError = !dataUnica
+    ? "Informe a data do ocorrido."
+    : !isValidISODate(dataUnica)
+    ? "Data inválida."
+    : isFuture(dataUnica)
+    ? "A data não pode estar no futuro."
+    : "";
 
   const canNext1 = !!unidade && !!categoria && !!subcategoria;
-  const canNext2 =
-    descricao.trim().length >= 100 && !!onde && !!dataUnica;
-
+  const canNext2 = descricao.trim().length >= 100 && !!onde && !dateError && !!plantao;
   const canSubmit = canNext1 && canNext2;
 
-  /* ==================== HELPERS ==================== */
+  // idempotency key
+  const payloadHash = () => {
+    const payload = {
+      unidade,
+      categoria,
+      subcategoria,
+      denunciado,
+      dataUnica,
+      periodicidade,
+      plantao,
+      onde,
+      descricao: descricao.trim(),
+      valorFinanceiro,
+      foiReportado,
+      paraQuem,
+      anonimo,
+      contato,
+      prefer,
+      emailAcompanhamento,
+      files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
+    };
+    const s = JSON.stringify(payload);
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return (h >>> 0).toString(36);
+  };
 
   const copyProtocol = async () => {
-    await navigator.clipboard.writeText(successData.protocolo);
-    alert("Protocolo copiado.");
+    if (!successData?.protocolo) return;
+    try {
+      await navigator.clipboard.writeText(successData.protocolo);
+      alert("Protocolo copiado.");
+    } catch {
+      alert("Não foi possível copiar automaticamente.");
+    }
   };
 
   const openMailTo = () => {
-    const subject = encodeURIComponent("Protocolo da denúncia - Venture");
+    if (!successData?.email) return;
+
+    const subject = encodeURIComponent("Protocolo da sua denúncia - Venture");
     const body = encodeURIComponent(
-      `Protocolo: ${successData.protocolo}\n\nGuarde este número.`
+      `Sua denúncia foi registrada com sucesso.\n\n` +
+      `Protocolo: ${successData.protocolo}\n\n` +
+      `Guarde este número para acompanhamento.`
     );
+
     window.location.href = `mailto:${successData.email}?subject=${subject}&body=${body}`;
   };
 
-  const resetForm = () => {
+  const resetFormAfterSuccess = () => {
     setStep(1);
+    setUnidade(UNIDADES[0]);
     setCategoria("");
     setSubcategoria("");
     setDenunciado({ nome: "", cargo: "", sexo: "" });
-    setDescricao("");
+    setDataUnica("");
+    setPeriodicidade("único");
+    setPlantao("");
     setOnde("");
+    setDescricao("");
+    setValorFinanceiro("");
+    setFoiReportado("nao");
+    setParaQuem("");
     setFiles([]);
+    setAnonimo(true);
+    setContato({ nome: "", email: "", telefone: "" });
+    setPrefer("email");
+    setEmailAcompanhamento("");
     setSuccessData(null);
   };
 
-  /* ==================== SUBMIT ==================== */
-
   const onSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      alert("Preencha os campos obrigatórios.");
+      return;
+    }
+    if (submitting) return;
 
     setSubmitting(true);
 
     try {
-      await ensureAnonAuth();
+      const key = payloadHash();
+      const last = sessionStorage.getItem("last_submit_hash");
+      if (last && last === key) {
+        alert("Esta denúncia já foi enviada. Evite cliques repetidos.");
+        return;
+      }
+
+      sessionStorage.setItem("last_submit_hash", key);
+
+      // autenticação anônima p/ regras do Storage/Firestore
+      try {
+        await withTimeout(ensureAnonAuth(), 8000, "iniciar sessão anônima");
+      } catch (e) {
+        console.error("[ensureAnonAuth] erro:", e);
+        alert("Falha ao iniciar sessão anônima. Verifique sua conexão e tente novamente.");
+        sessionStorage.removeItem("last_submit_hash");
+        return;
+      }
 
       const protocolo = genProtocolo();
 
+      // Upload anexos
       let anexosSubidos = [];
-
       if (files.length) {
-        anexosSubidos = await uploadAllFiles(protocolo, files, uploadFile);
+        try {
+          const ok = files.filter((f) => f.size <= 8 * 1024 * 1024);
+          if (ok.length !== files.length) {
+            alert("Alguns arquivos foram ignorados por exceder 8MB.");
+          }
+          anexosSubidos = await uploadAllFiles(protocolo, ok, uploadFile, 25000);
+        } catch (err) {
+          console.error("[upload] erro:", err);
+          alert("Não foi possível enviar os anexos. Você pode tentar novamente ou enviar sem anexos.");
+          anexosSubidos = [];
+        }
       }
 
+      // Salva denúncia no Firestore
       const data = {
         protocolo,
         unidade,
@@ -460,7 +551,7 @@ function Report() {
         subcategoria,
         denunciado,
         perguntas: {
-          periodo: { data: dataUnica },
+          periodo: { tipo: "unico", data: dataUnica },
           periodicidade,
           plantao,
           onde,
@@ -468,177 +559,421 @@ function Report() {
           foiReportado,
           paraQuem,
         },
-        descricao,
+        descricao: descricao.trim(),
         anonimo,
-        contato: anonimo ? null : contato,
-        emailAcompanhamento: emailAcompanhamento || null,
+        contato: anonimo ? null : { ...contato, prefer },
+        emailAcompanhamento: emailAcompanhamento.trim() || null,
         anexos: anexosSubidos,
         status: "Recebido",
+        _idempotency: key,
         createdAt: new Date().toISOString(),
       };
 
-      await createOrReplaceReport(protocolo, data);
+      try {
+        await withTimeout(
+          createOrReplaceReport(protocolo, data),
+          8000,
+          "salvar denúncia no Firestore"
+        );
+      } catch (err) {
+        console.error("[firestore] erro:", err);
+        alert("Não foi possível salvar sua denúncia agora. Tente novamente em instantes.");
+        sessionStorage.removeItem("last_submit_hash");
+        return;
+      }
 
       setSuccessData({
         protocolo,
-        email: emailAcompanhamento,
+        email: emailAcompanhamento.trim() || "",
       });
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao enviar denúncia.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  /* ==================== TELA FINAL ==================== */
-
-  if (successData) {
+  const StepChip = ({ n }) => {
+    const active = step === n;
     return (
-      <Card className="space-y-6 text-center">
-        <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-
-        <h2 className="text-xl font-bold">Denúncia registrada</h2>
-
-        <div className="bg-slate-100 p-4 rounded-lg">
-          <div className="text-xs">PROTOCOLO</div>
-          <div className="text-2xl font-mono font-bold text-emerald-700">
-            {successData.protocolo}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <button onClick={copyProtocol} className={btnPrimary}>
-            Copiar protocolo
-          </button>
-
-          {successData.email && (
-            <button onClick={openMailTo} className={btnOutline}>
-              Enviar para e-mail
-            </button>
-          )}
-
-          <button onClick={resetForm} className={btnOutline}>
-            Nova denúncia
-          </button>
-        </div>
-      </Card>
+      <div
+        className={
+          active
+            ? "px-2 py-1 rounded-full border bg-emerald-600 text-white border-emerald-700"
+            : "px-2 py-1 rounded-full border bg-white"
+        }
+      >
+        {n}
+      </div>
     );
-  }
-
-  /* ==================== FORM ==================== */
+  };
 
   return (
-    <Card className="space-y-4">
-      {step === 1 && (
-        <>
-          <Field label="Unidade">
-            <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
-              {UNIDADES.map((u) => (
-                <option key={u}>{u}</option>
-              ))}
-            </SelectBase>
-          </Field>
+    <section className="space-y-4 md:space-y-6">
+      <SectionTitle
+        icon={FileText}
+        title="Registrar denúncia"
+        subtitle="Responda às perguntas abaixo. Campos essenciais marcados com *."
+      />
 
-          <Field label="Categoria">
-            <SelectBase value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-              <option value="">Selecione</option>
-              <option value="Conduta">Conduta</option>
-              <option value="Fraude">Fraude</option>
-              <option value="Segurança">Segurança</option>
-            </SelectBase>
-          </Field>
+      {successData ? (
+        <Card className="space-y-5">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 mx-auto">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800">Obrigado pela sua denúncia</h3>
+            <p className="text-sm text-slate-600">
+              Sua manifestação foi registrada com sucesso.
+            </p>
+          </div>
 
-          <Field label="Subcategoria">
-            <input
-              className={inputClass}
-              value={subcategoria}
-              onChange={(e) => setSubcategoria(e.target.value)}
-            />
-          </Field>
+          <div className="rounded-xl border bg-slate-50 p-5 text-center">
+            <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+              Protocolo
+            </div>
+            <div className="font-mono text-2xl font-bold text-emerald-700">
+              {successData.protocolo}
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Guarde este número para acompanhar o andamento da denúncia.
+            </p>
+          </div>
 
-          <Field label="Nome do denunciado">
-            <input
-              className={inputClass}
-              value={denunciado.nome}
-              onChange={(e) =>
-                setDenunciado({ ...denunciado, nome: e.target.value })
-              }
-            />
-          </Field>
+          <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-center">
+            <button onClick={copyProtocol} className={btnPrimary}>
+              Copiar protocolo
+            </button>
 
-          <button onClick={() => setStep(2)} className={btnPrimary}>
-            Próxima
-          </button>
-        </>
+            {successData.email ? (
+              <button onClick={openMailTo} className={btnOutline}>
+                Enviar para meu e-mail
+              </button>
+            ) : null}
+
+            <a href="#/status" className={btnOutline}>
+              Acompanhar denúncia
+            </a>
+
+            <button onClick={resetFormAfterSuccess} className={btnOutline}>
+              Nova denúncia
+            </button>
+          </div>
+        </Card>
+      ) : (
+        <Card className={`space-y-4 ${submitting ? "pointer-events-none opacity-70 relative" : ""}`}>
+          {submitting && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center">
+              <div className="bg-black/40 rounded-md px-4 py-2 text-white">Enviando…</div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="hidden md:inline text-slate-500">Etapas:</span>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <StepChip key={n} n={n} />
+            ))}
+          </div>
+
+          {step === 1 && (
+            <div className="space-y-5">
+              <div className="grid md:grid-cols-2 gap-4 items-start">
+                <Field label="Unidade *">
+                  <SelectBase value={unidade} onChange={(e) => setUnidade(e.target.value)}>
+                    {UNIDADES.map((u) => (
+                      <option key={u}>{u}</option>
+                    ))}
+                  </SelectBase>
+                </Field>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium">
+                  Motivo da denúncia <span className="text-rose-600">*</span>
+                </div>
+                <div className="grid md:grid-cols-4 gap-4">
+                  {Object.keys(CATEGORIAS).map((cat) => (
+                    <CategoriaCard
+                      key={cat}
+                      titulo={cat}
+                      descricao={CATEGORIA_DESCRICOES[cat]}
+                      ativo={categoria === cat}
+                      onClick={() => {
+                        setCategoria(cat);
+                        setSubcategoria("");
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4 items-start">
+                <Field label="Detalhamento *" hint="Selecione o assunto específico">
+                  <SelectBase
+                    value={subcategoria}
+                    onChange={(e) => setSubcategoria(e.target.value)}
+                    disabled={!categoria}
+                  >
+                    <option value="">Selecione...</option>
+                    {categoria &&
+                      CATEGORIAS[categoria].map((sub) => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                  </SelectBase>
+                </Field>
+              </div>
+
+              <Card className="space-y-4">
+                <div className="font-semibold">Dados do denunciado (se souber)</div>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Field label="Nome">
+                    <input
+                      className={inputClass}
+                      value={denunciado.nome}
+                      onChange={(e) =>
+                        setDenunciado({ ...denunciado, nome: e.target.value })
+                      }
+                    />
+                  </Field>
+
+                  <Field label="Cargo">
+                    <input
+                      className={inputClass}
+                      value={denunciado.cargo}
+                      onChange={(e) =>
+                        setDenunciado({ ...denunciado, cargo: e.target.value })
+                      }
+                    />
+                  </Field>
+
+                  <Field label="Sexo">
+                    <SelectBase
+                      value={denunciado.sexo}
+                      onChange={(e) =>
+                        setDenunciado({ ...denunciado, sexo: e.target.value })
+                      }
+                    >
+                      <option value="">Selecione</option>
+                      <option value="Masculino">Masculino</option>
+                      <option value="Feminino">Feminino</option>
+                      <option value="Outro">Outro</option>
+                    </SelectBase>
+                  </Field>
+                </div>
+              </Card>
+
+              <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+                <a href="#/" className={btnOutline}>Home</a>
+                <button disabled={!canNext1 || submitting} onClick={() => setStep(2)} className={btnPrimary}>
+                  Próxima
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="grid md:grid-cols-12 gap-4 items-start">
+                <div className="md:col-span-4">
+                  <Field label="Quando aconteceu? *" hint="Selecione a data do ocorrido">
+                    <input
+                      type="date"
+                      className={inputClass}
+                      value={dataUnica}
+                      onChange={(e) => setDataUnica(e.target.value)}
+                    />
+                    {dateError && <div className="text-xs text-rose-600 mt-1">{dateError}</div>}
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Recorrência" hint=" ">
+                    <SelectBase value={periodicidade} onChange={(e) => setPeriodicidade(e.target.value)}>
+                      <option value="único">Evento único</option>
+                      <option value="recorrente">Recorrente</option>
+                      <option value="contínuo">Contínuo</option>
+                    </SelectBase>
+                  </Field>
+                </div>
+                <div className="md:col-span-4">
+                  <Field label="Plantão *" hint="Período do ocorrido">
+                    <SelectBase value={plantao} onChange={(e) => setPlantao(e.target.value)}>
+                      <option value="">Selecione</option>
+                      <option value="Diurno">Diurno</option>
+                      <option value="Noturno">Noturno</option>
+                      <option value="Madrugada">Madrugada</option>
+                    </SelectBase>
+                  </Field>
+                </div>
+                <div className="md:col-span-12">
+                  <Field label="Onde ocorreu? *" hint="Local/área/setor/cidade">
+                    <input
+                      className={inputClass}
+                      placeholder="Ex.: Loja KIZ - estoque"
+                      value={onde}
+                      onChange={(e) => setOnde(e.target.value)}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              <Field
+                label="Descreva detalhadamente a denúncia *"
+                hint="O que aconteceu? Quem estava envolvido? Há evidências?"
+              >
+                <textarea
+                  className="w-full rounded-lg border p-3 min-h-[160px]"
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  placeholder="Conte os fatos com o máximo de detalhes possíveis…"
+                />
+                <div
+                  className={
+                    descricao.trim().length < 100
+                      ? "text-xs mt-1 text-rose-600"
+                      : "text-xs mt-1 text-slate-500"
+                  }
+                >
+                  {descricao.trim().length} / 100
+                </div>
+              </Field>
+
+              <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+                <button onClick={() => setStep(1)} className={btnOutline}>Voltar</button>
+                <button disabled={!canNext2 || submitting} onClick={() => setStep(3)} className={btnPrimary}>
+                  Próxima
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="grid md:grid-cols-12 gap-4 items-start">
+                <div className="md:col-span-6">
+                  <Field label="Houve impacto financeiro?" hint="Se sim, estimativa do valor">
+                    <input
+                      className={inputClass}
+                      placeholder="Ex.: ~R$ 5.000"
+                      value={valorFinanceiro}
+                      onChange={(e) => setValorFinanceiro(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <div className="md:col-span-6">
+                  <Field label="Você já reportou isso internamente?" hint=" ">
+                    <SelectBase value={foiReportado} onChange={(e) => setFoiReportado(e.target.value)}>
+                      <option value="nao">Não</option>
+                      <option value="sim">Sim</option>
+                    </SelectBase>
+                  </Field>
+                </div>
+                {foiReportado === "sim" && (
+                  <div className="md:col-span-12">
+                    <Field label="Para quem? (opcional)" hint="Departamento, nome ou canal">
+                      <input className={inputClass} value={paraQuem} onChange={(e) => setParaQuem(e.target.value)} />
+                    </Field>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+                <button onClick={() => setStep(2)} className={btnOutline}>Voltar</button>
+                <button onClick={() => setStep(4)} className={btnPrimary}>Próxima</button>
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-4">
+              <Field label="Anexos (opcional)" hint="Imagens/PDF até 8MB cada. Remova metadados sensíveis antes de enviar.">
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => {
+                    const list = Array.from(e.target.files || []);
+                    const ok = list.filter((f) => f.size <= 8 * 1024 * 1024);
+                    const rejeitados = list.length - ok.length;
+                    if (rejeitados > 0) alert(`Alguns arquivos foram ignorados por exceder 8MB (${rejeitados}).`);
+                    setFiles(ok);
+                  }}
+                />
+                {!!files.length && (
+                  <ul className="text-sm text-slate-600 list-disc pl-5 mt-2">
+                    {files.map((f, i) => (
+                      <li key={i}>
+                        {f.name} ({Math.round(f.size / 1024)} KB)
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Field>
+              <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+                <button onClick={() => setStep(3)} className={btnOutline}>Voltar</button>
+                <button onClick={() => setStep(5)} className={btnPrimary}>Próxima</button>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-4">
+              <Field label="Anonimato" hint=" ">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={anonimo} onChange={(e) => setAnonimo(e.target.checked)} />
+                  <span className="text-sm">Quero permanecer anônimo</span>
+                </label>
+              </Field>
+
+              <Field
+                label="E-mail para receber o protocolo (opcional)"
+                hint="Se desejar, informe um e-mail apenas para guardar o protocolo e facilitar contato futuro."
+              >
+                <input
+                  type="email"
+                  className={inputClass}
+                  value={emailAcompanhamento}
+                  onChange={(e) => setEmailAcompanhamento(e.target.value)}
+                  placeholder="exemplo@email.com"
+                />
+              </Field>
+
+              {!anonimo && (
+                <div className="grid md:grid-cols-12 gap-4 items-start">
+                  <div className="md:col-span-4">
+                    <Field label="Nome" hint=" ">
+                      <input className={inputClass} value={contato.nome} onChange={(e) => setContato({ ...contato, nome: e.target.value })} />
+                    </Field>
+                  </div>
+                  <div className="md:col-span-4">
+                    <Field label="Email" hint=" ">
+                      <input type="email" className={inputClass} value={contato.email} onChange={(e) => setContato({ ...contato, email: e.target.value })} />
+                    </Field>
+                  </div>
+                  <div className="md:col-span-4">
+                    <Field label="Telefone" hint=" ">
+                      <input className={inputClass} value={contato.telefone} onChange={(e) => setContato({ ...contato, telefone: e.target.value })} />
+                    </Field>
+                  </div>
+                  <div className="md:col-span-4">
+                    <Field label="Preferência de contato" hint=" ">
+                      <SelectBase value={prefer} onChange={(e) => setPrefer(e.target.value)}>
+                        <option value="email">Email</option>
+                        <option value="telefone">Telefone</option>
+                      </SelectBase>
+                    </Field>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col md:flex-row gap-2 md:gap-3 justify-between">
+                <button onClick={() => setStep(4)} className={btnOutline} disabled={submitting}>Voltar</button>
+                <button onClick={onSubmit} disabled={!canSubmit || submitting} className={btnPrimary}>
+                  {submitting ? "Enviando…" : "Enviar denúncia"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
       )}
 
-      {step === 2 && (
-        <>
-          <Field label="Data">
-            <input
-              type="date"
-              className={inputClass}
-              value={dataUnica}
-              onChange={(e) => setDataUnica(e.target.value)}
-            />
-          </Field>
-
-          <Field label="Plantão">
-            <SelectBase value={plantao} onChange={(e) => setPlantao(e.target.value)}>
-              <option>Diurno</option>
-              <option>Noturno</option>
-              <option>Madrugada</option>
-            </SelectBase>
-          </Field>
-
-          <Field label="Onde">
-            <input
-              className={inputClass}
-              value={onde}
-              onChange={(e) => setOnde(e.target.value)}
-            />
-          </Field>
-
-          <Field label="Descrição">
-            <textarea
-              className="w-full border p-2 rounded"
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-            />
-          </Field>
-
-          <button onClick={() => setStep(3)} className={btnPrimary}>
-            Próxima
-          </button>
-        </>
-      )}
-
-      {step === 3 && (
-        <>
-          <Field label="Anexos">
-            <input
-              type="file"
-              multiple
-              onChange={(e) => setFiles(Array.from(e.target.files))}
-            />
-          </Field>
-
-          <Field label="E-mail (opcional)">
-            <input
-              type="email"
-              className={inputClass}
-              value={emailAcompanhamento}
-              onChange={(e) => setEmailAcompanhamento(e.target.value)}
-            />
-          </Field>
-
-          <button onClick={onSubmit} className={btnPrimary}>
-            Enviar denúncia
-          </button>
-        </>
-      )}
-    </Card>
+      <AvisosSeguranca />
+    </section>
   );
 }
 

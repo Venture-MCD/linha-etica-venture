@@ -935,15 +935,16 @@ function AdminPanel() {
   const [lista, setLista] = useState([]);
   const [sel, setSel] = useState(null);
 
-  // seleção (lote)
   const [selected, setSelected] = useState(new Set());
   const allSelected = selected.size > 0 && selected.size === lista.length;
   const anySelected = selected.size > 0;
 
-  // ref para o bloco de detalhes
+  const [newCount, setNewCount] = useState(0);
+  const [newIds, setNewIds] = useState(new Set());
+  const [initialLoaded, setInitialLoaded] = useState(false);
+
   const detailRef = useRef(null);
 
-  // helper: normaliza Timestamp/Date/string -> millis
   const tsToMs = (ts) => {
     if (!ts) return 0;
     try {
@@ -955,7 +956,32 @@ function AdminPanel() {
     }
   };
 
-  // Assina Firestore (ordem garantida + fallback)
+  const playNotificationSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
+      const ctx = new AudioCtx();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 0.35);
+    } catch (e) {
+      console.warn("Não foi possível tocar som de notificação:", e);
+    }
+  };
+
   useEffect(() => {
     const unsub = subscribeReports((arr) => {
       const sorted = [...arr].sort((a, b) => {
@@ -963,18 +989,52 @@ function AdminPanel() {
         const bMs = tsToMs(b.createdAt) || tsToMs(b.updatedAt);
         return bMs - aMs;
       });
-      setLista(sorted);
+
+      setLista((prevLista) => {
+        if (!initialLoaded) {
+          setInitialLoaded(true);
+          return sorted;
+        }
+
+        const prevIds = new Set(prevLista.map((x) => x.id));
+        const incomingNewIds = sorted
+          .filter((x) => !prevIds.has(x.id))
+          .map((x) => x.id);
+
+        if (incomingNewIds.length > 0) {
+          setNewIds((prev) => new Set([...prev, ...incomingNewIds]));
+          setNewCount((prev) => prev + incomingNewIds.length);
+          playNotificationSound();
+        }
+
+        return sorted;
+      });
+
       setSelected((prev) => new Set([...prev].filter((id) => sorted.find((x) => x.id === id))));
     });
-    return () => unsub && unsub();
-  }, []);
 
-  // ao selecionar, rola o detalhe pra cima
+    return () => unsub && unsub();
+  }, [initialLoaded]);
+
   useEffect(() => {
     if (sel && detailRef.current) {
       detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [sel]);
+
+  const clearNewAlerts = () => {
+    setNewCount(0);
+    setNewIds(new Set());
+  };
+
+  const openDetail = (c) => {
+    setSel(c);
+    setNewIds((prev) => {
+      const next = new Set(prev);
+      next.delete(c.id);
+      return next;
+    });
+  };
 
   const filtroTexto = (c) => {
     if (!q.trim()) return true;
@@ -1025,7 +1085,6 @@ function AdminPanel() {
     alert("Resposta adicionada ao histórico.");
   };
 
-  // abrir anexo (url ou path)
   async function handleOpenAttachment(f) {
     try {
       let url = (f && typeof f.url === "string" ? f.url : "") || "";
@@ -1047,7 +1106,6 @@ function AdminPanel() {
     }
   }
 
-  // seleção helpers
   const toggleOne = (id) => {
     setSelected((prev) => {
       const s = new Set(prev);
@@ -1055,12 +1113,12 @@ function AdminPanel() {
       return s;
     });
   };
+
   const toggleAll = () => {
     if (allSelected) setSelected(new Set());
     else setSelected(new Set(lista.map((x) => x.id)));
   };
 
-  // deletar
   const onDeleteSelected = async () => {
     if (!anySelected) return;
     if (!confirm(`Tem certeza que deseja excluir ${selected.size} denúncia(s)? Essa ação não pode ser desfeita.`)) return;
@@ -1085,7 +1143,6 @@ function AdminPanel() {
     alert("Denúncia excluída.");
   };
 
-  // formatador de datas
   const fmtDate = (ts) => {
     if (!ts) return "-";
     try {
@@ -1099,7 +1156,6 @@ function AdminPanel() {
     }
   };
 
-  /* ==================== Dashboard ==================== */
   const countBy = (arr, keyFn) =>
     arr.reduce((acc, x) => {
       const k = keyFn(x) || "-";
@@ -1146,7 +1202,6 @@ function AdminPanel() {
     </div>
   );
 
-  /* ==================== Exportação ==================== */
   function toCSV(rows) {
     const header = [
       "protocolo",
@@ -1302,7 +1357,21 @@ function AdminPanel() {
           </div>
         </div>
 
-        {/* Filtros / ações */}
+        {newCount > 0 && (
+          <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div className="text-sm font-medium text-emerald-800">
+              🔔 {newCount} nova(s) denúncia(s) recebida(s) nesta sessão
+            </div>
+            <button
+              type="button"
+              onClick={clearNewAlerts}
+              className="px-3 py-2 rounded-lg border border-emerald-400 text-emerald-800 hover:bg-emerald-100"
+            >
+              Marcar como visualizadas
+            </button>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-12 gap-2">
           <div className="md:col-span-5">
             <input
@@ -1357,7 +1426,6 @@ function AdminPanel() {
           </div>
         </div>
 
-        {/* ======== Dashboard ======== */}
         <div className="grid md:grid-cols-3 gap-3">
           <div className="rounded-xl border p-4 bg-white shadow">
             <div className="text-xs text-slate-500">Total (filtro atual)</div>
@@ -1384,7 +1452,6 @@ function AdminPanel() {
           <BarList title="Por plantão" data={porPlantao} />
         </div>
 
-        {/* ======== Detalhe ======== */}
         {sel && (
           <div ref={detailRef} className="rounded-lg border p-3 bg-slate-50 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
@@ -1513,7 +1580,6 @@ function AdminPanel() {
               </div>
             )}
 
-            {/* Ações admin */}
             <div className="mt-4 grid md:grid-cols-2 gap-3">
               <div className="rounded-xl border p-5 md:p-6 bg-white shadow space-y-2">
                 <div className="font-medium">Alterar status</div>
@@ -1546,7 +1612,6 @@ function AdminPanel() {
           </div>
         )}
 
-        {/* Lista MOBILE */}
         <div className="grid md:hidden gap-3">
           {filtered.length === 0 && (
             <div className="text-center text-slate-500 text-sm py-4 border rounded-lg">
@@ -1554,15 +1619,25 @@ function AdminPanel() {
             </div>
           )}
           {filtered.map((c) => (
-            <div key={c.id} className="rounded-lg border p-3 bg-white space-y-1">
-              <div className="flex items-start justify-between gap-2">
+            <div
+              key={c.id}
+              className={`rounded-lg border p-3 bg-white space-y-1 ${newIds.has(c.id) ? "bg-emerald-50" : ""}`}
+            >
+              <div className={`flex items-start justify-between gap-2 ${newIds.has(c.id) ? "rounded-lg p-2 bg-emerald-50" : ""}`}>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={selected.has(c.id)}
                     onChange={() => toggleOne(c.id)}
                   />
-                  <span className="font-mono text-sm">{c.id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm">{c.id}</span>
+                    {newIds.has(c.id) && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                        Nova
+                      </span>
+                    )}
+                  </div>
                 </label>
                 <div className="text-xs text-slate-500 text-right">
                   {fmtDate(c.createdAt)}
@@ -1576,14 +1651,18 @@ function AdminPanel() {
                 {c.subcategoria || "-"} • {c.perguntas?.onde || "-"} • Anexos: {c.anexos?.length || 0}
               </div>
               <div className="flex gap-2 pt-1">
-                <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
+                <button
+                  className="px-4 py-3 rounded-lg border hover:bg-slate-50"
+                  onClick={() => openDetail(c)}
+                >
+                  Detalhes
+                </button>
                 <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Tabela DESKTOP */}
         <div className="overflow-auto rounded-lg border hidden md:block">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left">
@@ -1617,7 +1696,10 @@ function AdminPanel() {
                 </tr>
               )}
               {filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50">
+                <tr
+                  key={c.id}
+                  className={`hover:bg-slate-50 ${newIds.has(c.id) ? "bg-emerald-50" : ""}`}
+                >
                   <td className="p-2 border-b">
                     <input
                       type="checkbox"
@@ -1626,7 +1708,16 @@ function AdminPanel() {
                       aria-label={`Selecionar ${c.id}`}
                     />
                   </td>
-                  <td className="p-2 border-b font-mono">{c.id}</td>
+                  <td className="p-2 border-b font-mono">
+                    <div className="flex items-center gap-2">
+                      <span>{c.id}</span>
+                      {newIds.has(c.id) && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-sans">
+                          Nova
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-2 border-b whitespace-nowrap">{fmtDate(c.createdAt)}</td>
                   <td className="p-2 border-b">{c.unidade}</td>
                   <td className="p-2 border-b">{c.categoria}</td>
@@ -1637,7 +1728,12 @@ function AdminPanel() {
                   <td className="p-2 border-b">{c.anexos?.length || 0}</td>
                   <td className="p-2 border-b">
                     <div className="flex gap-2">
-                      <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => setSel(c)}>Detalhes</button>
+                      <button
+                        className="px-4 py-3 rounded-lg border hover:bg-slate-50"
+                        onClick={() => openDetail(c)}
+                      >
+                        Detalhes
+                      </button>
                       <button className="px-4 py-3 rounded-lg border hover:bg-slate-50" onClick={() => onDeleteOne(c.id)}>Excluir</button>
                     </div>
                   </td>

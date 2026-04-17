@@ -324,15 +324,156 @@ function Termos() {
     <section className="space-y-4 md:space-y-6">
       <SectionTitle
         icon={Info}
-        title="Política de Uso da Linha Ética"
+        title="Política de Denúncias e Linha Ética Venture"
         subtitle={`Versão ${POLICY_VERSION} • Atualizado em ${POLICY_UPDATED}`}
       />
+
       <Card className="space-y-4">
-        <div className="text-sm text-slate-700 space-y-3 max-h-[55vh] overflow-auto pr-1">
-          <p><strong>Objetivo.</strong> Canal para que colaboradores e terceiros relatem, de boa-fé, suspeitas de irregularidades ou violações.</p>
-          <p><strong>Anonimato.</strong> Você pode denunciar de forma anônima ou identificada.</p>
-          <p><strong>LGPD.</strong> Tratamento apenas do necessário, com base legal adequada e acesso restrito aos autorizados.</p>
-          <p><strong>Concordância.</strong> Ao prosseguir, você declara que leu e concorda com esta Política.</p>
+        <div className="text-sm text-slate-700 space-y-4 max-h-[60vh] overflow-auto pr-1">
+
+          <div>
+            <p className="font-semibold">Objetivo</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Garantir um canal seguro, confidencial e estruturado para recebimento de denúncias.</li>
+              <li>Promover um ambiente ético, seguro e alinhado à prevenção de riscos no trabalho.</li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="font-semibold">Princípios</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Confidencialidade</li>
+              <li>Boa-fé</li>
+              <li>Não retaliação</li>
+              <li>Imparcialidade</li>
+              <li>Rastreabilidade</li>
+              <li>Transparência no tratamento do caso</li>
+            </ul>
+            <p className="mt-2">
+              A Venture não tolera retaliação contra qualquer pessoa que registre denúncia ou relato de boa-fé.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-semibold">Quem pode utilizar este canal</p>
+            <p className="mt-1">
+              Este canal pode ser utilizado por colaboradores, lideranças, terceiros, parceiros e demais pessoas que desejem relatar situações relevantes relacionadas ao ambiente de trabalho, à operação ou à conduta profissional.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-semibold">Tipos de denúncia e relato</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Assédio moral</li>
+              <li>Assédio sexual</li>
+              <li>Discriminação</li>
+              <li>Maus-tratos</li>
+              <li>Abuso de poder</li>
+              <li>Favoritismo</li>
+              <li>Fraude</li>
+              <li>Corrupção</li>
+              <li>Furto ou roubo</li>
+              <li>Adulteração de informações ou documentos</li>
+              <li>Uso indevido de bens e recursos</li>
+              <li>Vazamento ou uso indevido de informações</li>
+              <li>Riscos operacionais ou de segurança</li>
+              <li>Conflitos de interesse</li>
+              <li>Situações que afetem a integridade física, emocional ou psicológica no trabalho</li>
+              <li>Sugestões relevantes de melhoria de processo</li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="font-semibold">Forma de registro</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>A denúncia pode ser feita de forma anônima ou identificada.</li>
+              <li>Quando desejar, o denunciante poderá informar um e-mail para guardar o protocolo e facilitar acompanhamento futuro.</li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="font-semibold">Fluxo de tratamento</p>
+            <ol className="list-decimal pl-5 space-y-1 mt-1">
+              <li>Recebimento da denúncia</li>
+              <li>Registro com protocolo</li>
+              <li>Triagem inicial</li>
+              <li>Classificação de risco</li>
+              <li>Análise e investigação</li>
+              <li>Definição de medidas e ações corretivas</li>
+              <li>Monitoramento e encerramento</li>
+            </ol>
+          </div>
+
+          <div>
+            <p className="font-semibold">Prazos de tratamento</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Recebimento e protocolo: imediato</li>
+              <li>Triagem inicial: até 5 dias úteis</li>
+              <li>Atualização de andamento: conforme a evolução do caso</li>
+              <li>Conclusão: varia de acordo com a complexidade, evidências e necessidade de apuração</li>
+            </ul>
+            <p className="mt-2">
+              Esses prazos são internos e podem variar conforme o caso concreto.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-semibold">Risco imediato</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Denúncias classificadas com risco imediato terão prioridade máxima.</li>
+              <li>Dependendo da gravidade, poderão gerar ações imediatas e preventivas, inclusive antes da conclusão da apuração.</li>
+            </ul>
+            <p className="mt-2 text-amber-700 font-medium">
+              Importante: este canal não substitui atendimento emergencial. Em caso de risco imediato à integridade física ou segurança, procure imediatamente um responsável local ou serviço de emergência.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-semibold">Comitê de avaliação</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Os casos poderão ser analisados por representantes de RH, Operações e outras áreas envolvidas, conforme a natureza da denúncia.</li>
+              <li>Pessoas com conflito de interesse não participam da análise.</li>
+              <li>Casos críticos podem exigir revisão obrigatória.</li>
+              <li>Situações graves podem ser escaladas para níveis superiores de decisão.</li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="font-semibold">Confidencialidade e proteção das informações</p>
+            <p className="mt-1">
+              As informações registradas serão tratadas com acesso restrito e uso limitado às finalidades de análise, apuração, tomada de decisão, prevenção e melhoria do ambiente de trabalho.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-semibold">Uso das informações para prevenção e melhoria</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Corrigir falhas de conduta</li>
+              <li>Revisar processos</li>
+              <li>Reforçar treinamento e liderança</li>
+              <li>Prevenir recorrências</li>
+              <li>Apoiar ações de gestão de risco</li>
+              <li>Contribuir para a melhoria do ambiente de trabalho e prevenção de riscos futuros</li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="font-semibold">Acompanhamento</p>
+            <p className="mt-1">
+              Após o envio, o denunciante receberá um protocolo e poderá acompanhar a evolução do caso na área de acompanhamento do canal.
+            </p>
+          </div>
+
+          <div>
+            <p className="font-semibold">Compromisso da Venture</p>
+            <ul className="list-disc pl-5 space-y-1 mt-1">
+              <li>Respeito às pessoas</li>
+              <li>Ambiente de trabalho seguro</li>
+              <li>Apuração responsável</li>
+              <li>Prevenção de riscos</li>
+              <li>Integridade e ética nas relações de trabalho</li>
+            </ul>
+          </div>
         </div>
 
         <label className="flex items-start gap-2">
@@ -342,7 +483,9 @@ function Termos() {
             checked={agree}
             onChange={(e) => setAgree(e.target.checked)}
           />
-          <span className="text-sm">Li e concordo com os termos e a Política de Uso.</span>
+          <span className="text-sm">
+            Li e concordo com os termos e a Política de Denúncias e Linha Ética Venture.
+          </span>
         </label>
 
         <div className="flex flex-col sm:flex-row gap-2">
